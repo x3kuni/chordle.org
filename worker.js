@@ -22,6 +22,62 @@ export default {
       html = html.replace("</head>", socialMeta + "\n</head>");
     }
     html = html.replace("return hash==='#home' || hash==='' || hash==='#';", "return hash==='#home' || hash==='' || hash==='#' || hash.startsWith('#replay/');");
+    // Chordle's daily cycle is globally anchored to midnight in Los Angeles.
+    // Patch the core engine before it executes so local storage, countdowns,
+    // date labels, lifetime-day accounting, and Supabase roll_day agree.
+    const pacificHelperMarker = "  const LOCAL_DAILY_ROLL_KEY='chordle_generated_daily_roll_v1';";
+    if (html.includes(pacificHelperMarker) && !html.includes('CHORDLE_PACIFIC_TIME_ZONE')) {
+      const pacificHelpers = `
+  const CHORDLE_PACIFIC_TIME_ZONE='America/Los_Angeles';
+  const CHORDLE_PACIFIC_DATE_FORMATTER=new Intl.DateTimeFormat('en-US',{timeZone:CHORDLE_PACIFIC_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'});
+  const CHORDLE_PACIFIC_CLOCK_FORMATTER=new Intl.DateTimeFormat('en-US',{timeZone:CHORDLE_PACIFIC_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  function chordlePacificParts(date=new Date(),withClock=false){
+    const out={};
+    const formatter=withClock?CHORDLE_PACIFIC_CLOCK_FORMATTER:CHORDLE_PACIFIC_DATE_FORMATTER;
+    for(const part of formatter.formatToParts(date)) if(part.type!=='literal') out[part.type]=part.value;
+    return out;
+  }
+  function chordlePacificDayKey(date=new Date()){
+    const p=chordlePacificParts(date,false);
+    return p.year+'-'+p.month+'-'+p.day;
+  }
+  function chordleNextPacificMidnight(now=new Date()){
+    const p=chordlePacificParts(now,false);
+    const tomorrow=new Date(Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day)+1));
+    const y=tomorrow.getUTCFullYear(),m=tomorrow.getUTCMonth()+1,d=tomorrow.getUTCDate();
+    for(let utcHour=6;utcHour<=10;utcHour++){
+      const candidate=new Date(Date.UTC(y,m-1,d,utcHour,0,0));
+      const q=chordlePacificParts(candidate,true);
+      if(Number(q.year)===y&&Number(q.month)===m&&Number(q.day)===d&&Number(q.hour)===0&&Number(q.minute)===0) return candidate;
+    }
+    return new Date(Date.UTC(y,m-1,d,8,0,0));
+  }
+`;
+      html = html.replace(pacificHelperMarker, pacificHelpers + '\n' + pacificHelperMarker);
+    }
+
+    html = html.replace(
+      /    const d=new Date\(\);\n    const day=`\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`;/,
+      "    const day=chordlePacificDayKey();"
+    );
+    html = html.replace(
+      /  function localDayKey\(d=new Date\(\)\)\{ return `\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`; \}/g,
+      "  function localDayKey(d=new Date()){ return chordlePacificDayKey(d); }"
+    );
+    html = html.replace(
+      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});",
+      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{timeZone:CHORDLE_PACIFIC_TIME_ZONE,weekday:'long',year:'numeric',month:'long',day:'numeric'});"
+    );
+    html = html.replace(
+      "    const next=new Date(now); next.setHours(24,0,0,0);",
+      "    const next=chordleNextPacificMidnight(now);"
+    );
+
+    // Keep native badge timing, but never allow whole-chord analysis badges to duplicate.
+    html = html.replace(
+      "    const finalBadges=wholeChordBadges(notes);",
+      "    const existingBadgeKeys=new Set(currentBadges.map(b=>String(b?.key||b?.name||'')));\n    const finalBadges=wholeChordBadges(notes).filter(b=>!existingBadgeKeys.has(String(b?.key||b?.name||'')));"
+    );
 
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
     // Chordle's main IIFE. auth.js uses these instead of recreating those panels.
