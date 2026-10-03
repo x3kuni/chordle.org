@@ -355,6 +355,20 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 .chordle-leaderboard-card-host .mock-roll-card{
   width:100%!important;
 }
+.chordle-leaderboard-card-host .mock-roll-score-block{
+  --mock-score-right-gutter:0px!important;
+  align-self:stretch!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-end!important;
+  justify-content:center!important;
+  padding-top:0!important;
+  padding-right:0!important;
+  transform:translateX(8px);
+}
+.chordle-leaderboard-card-host .mock-roll-score-block .score-rarity{
+  margin-bottom:6px!important;
+}
 
 /* Today's #1 remains a separate featured layout. */
 .leaderboard-winner-card .mock-roll-card,
@@ -381,7 +395,7 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   gap:21px!important;
 }
 .leaderboard-winner-card .leaderboard-roll-rarity{
-  font-size:13px!important;
+  font-size:16px!important;
   letter-spacing:.16em!important;
 }
 .leaderboard-winner-card .leaderboard-winner-by{
@@ -406,9 +420,8 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 .chordle-badge-sort-host{position:relative!important}
 .chordle-badge-sort-control{
   position:absolute;top:10px;right:12px;z-index:8;
-  display:flex;align-items:center;gap:7px;
-  padding:6px 8px;border:1px solid rgba(255,255,255,.11);border-radius:8px;
-  background:rgba(17,18,22,.80);backdrop-filter:blur(5px);
+  display:flex;align-items:center;
+  padding:0;border:0;background:transparent;backdrop-filter:none;
   color:#aeb3bd;font-size:10px;font-weight:800;letter-spacing:.04em;
 }
 .chordle-badge-sort-control select{
@@ -454,6 +467,42 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
 }
 .profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
+.profile-first-discoveries-panel{
+  margin:26px 0 0;
+  padding:18px 20px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;
+  background:rgba(255,255,255,.028);
+}
+.profile-first-discoveries-title{
+  margin:0 0 14px;
+  color:#eef0f4;
+  font-size:15px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.profile-first-discoveries-list{display:grid;gap:9px}
+.profile-first-discovery-link{
+  appearance:none;
+  width:max-content;
+  max-width:100%;
+  padding:0;
+  border:0;
+  background:none;
+  font:800 16px/1.25 inherit;
+  text-align:left;
+  cursor:pointer;
+  white-space:normal;
+}
+.profile-first-discovery-link:hover,
+.profile-first-discovery-link:focus-visible{
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
+  outline:none;
+}
+.profile-first-discoveries-empty{color:#777d87;font-size:13px;font-weight:700}
 .chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
 .chordle-footer a{color:#747983;text-decoration:none;transition:color .15s ease}
 .chordle-footer a:hover{color:#a6abb4}
@@ -540,7 +589,22 @@ html.chordle-info-route .admin-luck{display:none!important}
 document.head.appendChild(style);
 
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));}
-function localDayKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+const CHORDLE_TIME_ZONE="America/Los_Angeles";
+const CHORDLE_PACIFIC_DATE_FORMATTER=new Intl.DateTimeFormat("en-US",{timeZone:CHORDLE_TIME_ZONE,year:"numeric",month:"2-digit",day:"2-digit"});
+function pacificDateParts(d=new Date()){
+  const parts={};
+  for(const part of CHORDLE_PACIFIC_DATE_FORMATTER.formatToParts(d)){
+    if(part.type!=="literal")parts[part.type]=part.value;
+  }
+  return parts;
+}
+function localDayKey(d=new Date()){
+  const parts=pacificDateParts(d);
+  return parts.year+"-"+parts.month+"-"+parts.day;
+}
+function pacificDisplayDate(d=new Date()){
+  return d.toLocaleDateString(undefined,{timeZone:CHORDLE_TIME_ZONE,weekday:"long",year:"numeric",month:"long",day:"numeric"});
+}
 function noteName(n){return `${NOTE_NAMES_FLAT[((Number(n)%12)+12)%12]}${2+Math.floor(Number(n)/12)}`;}
 function formatScore(v){const n=Number(v||0);return Number.isFinite(n)?Math.round(n).toLocaleString():"0";}
 function username(user=state.session?.user){return state.profile?.username||user?.user_metadata?.username||user?.email?.split("@")[0]||"Player";}
@@ -1573,6 +1637,83 @@ function renderTopBadges(rows){
   nativeApp()?.queueCompactBadgeTitleFit?.(el);
 }
 
+function mountFirstDiscoveriesPanel(){
+  const page=document.getElementById('profilePage');
+  const badgesPanel=page?.querySelector('.profile-badges-panel');
+  if(!page||!badgesPanel)return null;
+  let panel=document.getElementById('profileFirstDiscoveriesPanel');
+  if(!panel){
+    panel=document.createElement('section');
+    panel.id='profileFirstDiscoveriesPanel';
+    panel.className='profile-first-discoveries-panel';
+    panel.innerHTML='<h2 class="profile-first-discoveries-title">First Discoveries</h2><div class="profile-first-discoveries-list"></div>';
+  }
+  badgesPanel.insertAdjacentElement('afterend',panel);
+  return panel;
+}
+
+async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
+  const panel=mountFirstDiscoveriesPanel();
+  if(!panel)return;
+  const list=panel.querySelector('.profile-first-discoveries-list');
+  list.replaceChildren();
+
+  if(!targetProfile){
+    panel.hidden=true;
+    return;
+  }
+  panel.hidden=false;
+
+  const rows=(badgeRows||[]).filter(row=>row?.badge_key);
+  const keys=[...new Set(rows.map(row=>String(row.badge_key)))];
+  if(!keys.length){
+    list.innerHTML='<div class="profile-first-discoveries-empty">No first discoveries yet.</div>';
+    return;
+  }
+
+  const {data:owners,error}=await supabase.from('chordle_user_badges')
+    .select('user_id,badge_key,discovered_at')
+    .in('badge_key',keys)
+    .order('discovered_at',{ascending:true});
+  if(error){
+    console.warn('Chordle profile first discoveries:',error.message);
+    list.innerHTML='<div class="profile-first-discoveries-empty">First discoveries unavailable.</div>';
+    return;
+  }
+
+  const firstByKey=new Map();
+  for(const owner of (owners||[])){
+    const key=String(owner.badge_key||'');
+    if(key&&!firstByKey.has(key))firstByKey.set(key,owner);
+  }
+
+  const firstRows=rows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
+  firstRows.sort((a,b)=>{
+    const rarityDiff=RARITY_ORDER.indexOf(String(b.rarity||'common').toLowerCase())-RARITY_ORDER.indexOf(String(a.rarity||'common').toLowerCase());
+    if(rarityDiff!==0)return rarityDiff;
+    const pointDiff=(Number(b.points)||0)-(Number(a.points)||0);
+    if(pointDiff!==0)return pointDiff;
+    return String(a.badge_name||a.badge_key).localeCompare(String(b.badge_name||b.badge_key));
+  });
+
+  if(!firstRows.length){
+    list.innerHTML='<div class="profile-first-discoveries-empty">No first discoveries yet.</div>';
+    return;
+  }
+
+  for(const saved of firstRows){
+    const key=String(saved.badge_key);
+    const catalog=nativeApp()?.getCatalogBadgeByKey?.(key);
+    const rarity=String(catalog?.rarity||saved.rarity||'common').toLowerCase();
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='profile-first-discovery-link rarity-text-'+rarity;
+    button.textContent=catalog?.name||saved.badge_name||'Badge';
+    button.addEventListener('click',()=>nativeApp()?.openBadgeDetailByKey?.(key));
+    list.appendChild(button);
+  }
+}
+
 function mountRollHistoryEntry(ownProfile){
   const page=document.getElementById('profilePage');
   const badgesPanel=page?.querySelector('.profile-badges-panel');
@@ -1810,6 +1951,7 @@ async function renderProfile(){
     void renderProfileLikeControl(null,false);
     renderBestRoll(null,null);
     renderTopBadges([]);
+    await renderFirstDiscoveries(null,[]);
     mountAccountControls();
     return;
   }
@@ -1827,10 +1969,11 @@ async function renderProfile(){
 
   const [{data:best},{data:badges}]=await Promise.all([
     supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
-    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false}).limit(10)
+    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false})
   ]);
   renderBestRoll(best||null,target);
   renderTopBadges(badges||[]);
+  await renderFirstDiscoveries(target,badges||[]);
   mountAccountControls();
 }
 
@@ -1954,6 +2097,7 @@ async function loadReplayFromHash(){
   }
 
   nativeApp()?.stopAllAudio?.();
+  document.documentElement.classList.remove('chordle-roll-history-route','chordle-info-route');
 
   const [profileResult,rollResult]=await Promise.all([
     fetchProfileTarget(target.userKey),
@@ -2153,7 +2297,7 @@ function mountBadgeSortControl(){
     control=document.createElement('label');
     control.id='chordleBadgeSortControl';
     control.className='chordle-badge-sort-control';
-    control.innerHTML='<span>Score</span><select aria-label="Sort badges by score"><option value="desc">Score descending</option><option value="asc">Score ascending</option></select>';
+    control.innerHTML='<select aria-label="Sort badges by score"><option value="desc">Score descending</option><option value="asc">Score ascending</option></select>';
     host.appendChild(control);
     const select=control.querySelector('select');
     select.value=state.badgeSortOrder;
@@ -2291,7 +2435,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
   };
 
   if(titleEl)titleEl.textContent="Today's Leaderboard";
-  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  if(dateEl)dateEl.textContent=pacificDisplayDate();
 
   let todayRolls=state.leaderboardTodayRolls;
   let todayProfiles=state.leaderboardTodayProfiles;
