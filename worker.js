@@ -5,6 +5,22 @@ export default {
     if (!type.includes("text/html")) return response;
 
     let html = await response.text();
+
+    const socialMeta = `
+<meta name="description" content="Generate one random six-note chord each day. Discover badges, compare scores, and climb the leaderboard." />
+<meta name="theme-color" content="#ff72c6" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Chordle" />
+<meta property="og:title" content="Chordle — Daily Random Chord Game" />
+<meta property="og:description" content="Generate one random six-note chord each day. Discover badges, compare scores, and climb the leaderboard." />
+<meta property="og:url" content="https://chordle.org/" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Chordle — Daily Random Chord Game" />
+<meta name="twitter:description" content="Generate one random six-note chord each day. Discover badges, compare scores, and climb the leaderboard." />
+<link rel="canonical" href="https://chordle.org/" />`;
+    if (html.includes("</head>") && !html.includes('property="og:title"')) {
+      html = html.replace("</head>", socialMeta + "\n</head>");
+    }
     html = html.replace("return hash==='#home' || hash==='' || hash==='#';", "return hash==='#home' || hash==='' || hash==='#' || hash.startsWith('#replay/');");
 
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
@@ -250,7 +266,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=separate-replay-route-pr12-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=discord-embed-pr13-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);

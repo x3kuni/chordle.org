@@ -303,6 +303,7 @@ function currentShareText(){
     const prefix=rarityAtLeast(badge.rarity,'legendary')?'## ':'';
     lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
   });
+  lines.push('', 'https://chordle.org/');
   return lines.join('\n');
 }
 
@@ -1789,12 +1790,42 @@ async function initializeSignedInUser(user){
   else if(document.getElementById("nextChord")?.classList.contains("visible"))await persistCompletedRoll();
 }
 
+function replayNavTarget(id){
+  if(id==='homeLink')return '#home';
+  if(id==='leaderboardNavBtn')return '#leaderboard';
+  if(id==='badgesNavBtn')return '#badges';
+  if(id==='settingsBtn')return '#settings';
+  if(id==='profileNavBtn')return profileHref(state.profile||state.session?.user?.id);
+  return '#home';
+}
+
+function hardExitReplay(targetHash='#home'){
+  nativeApp()?.stopAllAudio?.();
+  state.replayLoadSeq++;
+  state.externalReplay=null;
+  document.documentElement.classList.remove('chordle-external-replay');
+  clearReplayPanel();
+
+  // A spectator reveal has its own async note/badge/score timers inside the
+  // original game engine. A full document restart is intentional here: it
+  // destroys every replay timer/animation/audio node before loading the user's
+  // real route, so no spectator state can bleed into their daily chord.
+  const cleanHash=String(targetHash||'#home').startsWith('#')?String(targetHash||'#home'):'#home';
+  const url=location.origin+location.pathname+location.search+cleanHash;
+  location.replace(url);
+  setTimeout(()=>location.reload(),0);
+}
+
 function wireReplayExitNavigation(){
-  for(const id of ['homeLink','leaderboardNavBtn','badgesNavBtn','profileNavBtn','settingsBtn']){
-    document.getElementById(id)?.addEventListener('click',()=>{
-      if(state.externalReplay||isReplayHash())exitExternalReplay({restoreOwn:true});
-    },true);
-  }
+  document.addEventListener('click',event=>{
+    if(!(state.externalReplay||isReplayHash()))return;
+    const nav=event.target.closest?.('#homeLink,#leaderboardNavBtn,#badgesNavBtn,#profileNavBtn,#settingsBtn');
+    if(!nav)return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    hardExitReplay(replayNavTarget(nav.id));
+  },true);
 }
 
 function wireNavigation(){
@@ -1826,13 +1857,17 @@ function wireNavigation(){
 
   window.addEventListener('hashchange',()=>{
     nativeApp()?.stopAllAudio?.();
+
+    if(!isReplayHash()&&state.externalReplay){
+      hardExitReplay(location.hash||'#home');
+      return;
+    }
+
     setTimeout(async()=>{
       if(isReplayHash()){
         await loadReplayFromHash();
         return;
       }
-
-      if(state.externalReplay)exitExternalReplay({restoreOwn:true});
 
       if(isMainHash()&&state.homeNeedsReset){
         location.reload();
@@ -1933,4 +1968,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
