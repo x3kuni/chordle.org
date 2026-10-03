@@ -61,9 +61,9 @@ export default {
       for(const badge of [...badges].reverse()){
         const el=document.createElement('div');
         const seenKey=badgeSeenKey(badge);
-        el.className=`badge ${badge.rarity}${badge.special?' analysis-final':''} show`;
+        el.className=\`badge \${badge.rarity}\${badge.special?' analysis-final':''} show\`;
         if(!badge.special) el.dataset.badgeKey=seenKey;
-        el.innerHTML=`<div class="badge-row"><div><div class="badge-name-line"><div class="badge-name">${badge.name}</div></div>${badgeMiniNotes(badge)}<div class="badge-desc">${badge.desc||''}</div></div><div class="badge-meta"><div class="rarity">${badge.rarity}</div><div class="points">+${Number(badge.points||0).toLocaleString()}</div></div></div>`;
+        el.innerHTML=\`<div class="badge-row"><div><div class="badge-name-line"><div class="badge-name">\${badge.name}</div></div>\${badgeMiniNotes(badge)}<div class="badge-desc">\${badge.desc||''}</div></div><div class="badge-meta"><div class="rarity">\${badge.rarity}</div><div class="points">+\${Number(badge.points||0).toLocaleString()}</div></div></div>\`;
         el.addEventListener('mouseenter',()=>focusBadge(badge));
         el.addEventListener('mouseleave',clearFocus);
         badgesEl.appendChild(el);
