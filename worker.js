@@ -103,11 +103,20 @@ export default {
       const id=badgeDetailIdFromHash();
       return id===null?null:(badgeCatalogByPublicId().get(id)||null);
     },
+    formatBadgeProbability,
+    badgeIndexLabel:rarity=>BADGE_INDEX_LABELS[rarity]||rarity,
+    queueBadgeDetailStatFit,
     syncRarityGradient,
     queueMockScoreFit,
     queueCompactBadgeTitleFit,
     scoreTier,
     stopRollPreview,
+    setOwnedBadgeKeys:keys=>{
+      seenBadges.clear();
+      for(const key of (keys||[])) seenBadges.add(String(key));
+      writeSeenBadges();
+      if(location.hash==='#badges') renderBadgeIndexPage();
+    },
     restoreCompletedRoll:chordleRestoreCompletedRoll
   };
   ${simMarker}`;
