@@ -5,10 +5,10 @@ This branch adds Supabase authentication plus Profile and Leaderboard integratio
 ## Supabase
 
 1. Open Supabase -> SQL Editor.
-2. Run `supabase/chordle_profiles_setup.sql` once.
+2. Run `supabase/chordle_profiles_setup.sql` once.\n3. Run `supabase/chordle_rolls_setup.sql` once. This creates shared daily rolls, roll badges, badge ownership, score-awarding triggers, and the RLS policies used by the live leaderboard.\n4. After both scripts succeed, create/login through the Chordle UI rather than manually adding profile rows.
 3. Open Authentication -> Users. Create/login through the Chordle UI rather than manually adding profile rows.
 4. Open Table Editor -> `profiles`. A new Auth user should produce a row with the same UUID in `profiles.id`.
-5. Confirm different accounts produce different rows.
+7. Confirm different accounts produce different rows.\n8. After an official roll completes, confirm a row appears in `daily_rolls`, badge rows appear in `daily_roll_badges`, and unique owned badges appear in `user_badges`.
 
 Expected `profiles` columns:
 - `id uuid`
