@@ -256,13 +256,15 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   white-space:nowrap;
 }
 .leaderboard-roll-rarity-corner{
-  position:absolute;
-  top:10px;
-  right:14px;
+  position:absolute!important;
+  top:7px!important;
+  right:9px!important;
+  bottom:auto!important;
+  left:auto!important;
   z-index:4;
-  width:auto;
-  margin:0;
-  text-align:right;
+  width:auto!important;
+  margin:0!important;
+  text-align:right!important;
 }
 .leaderboard-winner-meta-row{
   display:flex!important;
@@ -316,44 +318,6 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   width:100%!important;
   font-size:clamp(38px,4.5vw,58px);line-height:.92;
   margin:0!important;padding:0!important;
-  text-align:center!important;
-}
-#scoreBox .chordle-score-heading,
-#scoreBox .chordle-rarity-heading{
-  display:block!important;
-  width:100%!important;
-  text-align:center!important;
-}
-#scoreBox .chordle-score-heading{margin:0 0 12px!important}
-#scoreBox #score{
-  display:block!important;
-  position:relative!important;
-  inset:auto!important;
-  width:100%!important;
-  max-width:100%!important;
-  grid-area:auto!important;
-  margin:0 auto 12px!important;
-  padding:0!important;
-  text-align:center!important;
-  line-height:.86!important;
-}
-#scoreBox .chordle-rarity-heading{margin:0 0 7px!important}
-#scoreBox #scoreRarity{
-  display:block!important;
-  position:relative!important;
-  inset:auto!important;
-  width:100%!important;
-  grid-area:auto!important;
-  margin:0 auto!important;
-  text-align:center!important;
-}
-#scoreBox #scorePercentile{
-  display:block!important;
-  position:relative!important;
-  inset:auto!important;
-  width:100%!important;
-  grid-area:auto!important;
-  margin:13px auto 0!important;
   text-align:center!important;
 }
 .chordle-badge-sort-host{position:relative!important}
@@ -874,15 +838,16 @@ async function fetchProfileTarget(target){
 function rollSummary(roll){
   if(!roll||!Array.isArray(roll.notes))return null;
   const notes=roll.notes.map(Number);
-  const badges=badgeObjectsForNotes(notes);
-  const total=Math.max(0,Math.round(Number(roll.score)||0));
+  const canonical=canonicalRollAnalysis(notes);
+  const badges=canonical?.badges||badgeObjectsForNotes(notes);
+  const total=Math.max(0,Math.round(Number(roll.score)||canonical?.score||0));
   const tier=nativeApp()?.scoreTier?.(total);
   return {
     notes,badges,score:total,
-    rarity:String(roll.rarity||tier?.id||'common').toLowerCase(),
-    rarityLabel:tier?.label||titleCaseRarity(roll.rarity),
-    chordName:roll.chord_name||'Chord',
-    chordDetail:roll.chord_detail||''
+    rarity:String(roll.rarity||canonical?.rarity||tier?.id||'common').toLowerCase(),
+    rarityLabel:tier?.label||titleCaseRarity(roll.rarity||canonical?.rarity),
+    chordName:validChordName(roll.chord_name)?String(roll.chord_name).trim():(canonical?.chordName||'Chord'),
+    chordDetail:validChordDetail(roll.chord_detail)?String(roll.chord_detail).trim():(canonical?.chordDetail||'')
   };
 }
 function patchRenderedProfileLink(root,profile){
@@ -1176,18 +1141,50 @@ function badgeObjectsForNotes(notes){
   try{return [...sim.analyze(notes),...sim.wholeChordBadges(notes)];}catch{return [];}
 }
 
+function validChordName(value){
+  const text=String(value||'').trim();
+  return !!text && !['—','-','Chord','Generating six notes…','Your chord is ready to generate'].includes(text);
+}
+
+function validChordDetail(value){
+  const text=String(value||'').trim();
+  return !!text && !['—','-','Generating six notes…','Your chord is ready to generate'].includes(text);
+}
+
 function canonicalRollAnalysis(notes){
   if(!Array.isArray(notes)||notes.length!==6)return null;
+  const sim=window.__CHORDLE_SIM__;
+  if(sim?.evaluateRoll){
+    try{
+      const evaluated=sim.evaluateRoll(notes.map(Number));
+      if(evaluated&&Array.isArray(evaluated.badges)&&Number(evaluated.score)>0){
+        return {
+          badges:evaluated.badges,
+          score:Math.round(Number(evaluated.score)),
+          rarity:String(evaluated.rarity||'common').toLowerCase(),
+          chordName:validChordName(evaluated.chordName)?String(evaluated.chordName).trim():null,
+          chordDetail:validChordDetail(evaluated.chordDetail)?String(evaluated.chordDetail).trim():null
+        };
+      }
+    }catch(error){
+      console.warn('Chordle canonical roll evaluation:',error);
+    }
+  }
+
   const badges=badgeObjectsForNotes(notes);
   if(!badges.length)return null;
   const rawScore=badges.reduce((sum,badge)=>sum+Math.max(0,Number(badge?.points)||0),0);
   const score=Math.round(rawScore);
   if(!Number.isFinite(score)||score<=0)return null;
-  const tier=nativeApp()?.scoreTier?.(score);
+  const tier=sim?.scoreTier?.(score)||nativeApp()?.scoreTier?.(score);
+  let identity=null;
+  try{identity=sim?.identifyChord?.(notes.map(Number))||null;}catch{}
   return {
     badges,
     score,
-    rarity:String(tier?.id||'common').toLowerCase()
+    rarity:String(tier?.id||'common').toLowerCase(),
+    chordName:validChordName(identity?.name)?String(identity.name).trim():null,
+    chordDetail:validChordDetail(identity?.detail)?String(identity.detail).trim():null
   };
 }
 
@@ -1219,9 +1216,17 @@ function captureAnonymousRoll({requireComplete=true}={}){
     roll_day:localDayKey(),
     notes,
     score:analysis.score,
-    chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||previous?.chord_name||null,
-    chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||previous?.chord_detail||null,
+    chord_name:analysis.chordName||previous?.chord_name||null,
+    chord_detail:analysis.chordDetail||previous?.chord_detail||null,
     rarity:analysis.rarity,
+    badges:analysis.badges.map(b=>({
+      key:String(b.key||b.name||'unknown'),
+      name:String(b.name||'Badge'),
+      desc:String(nativeApp()?.badgeDescription?.(b)||b.desc||''),
+      rarity:String(b.rarity||'common').toLowerCase(),
+      points:Math.max(0,Math.round(Number(b.points)||0)),
+      special:!!b.special
+    })),
     complete:complete||previous?.complete===true,
     captured_at:Date.now()
   };
@@ -1237,6 +1242,7 @@ async function persistPendingAnonymousRoll(){
     clearAnonymousRollClaim();
     return null;
   }
+
   const notes=Array.isArray(pending.notes)?pending.notes.map(Number):[];
   if(notes.length!==6||!notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36))return null;
   const analysis=canonicalRollAnalysis(notes);
@@ -1244,33 +1250,36 @@ async function persistPendingAnonymousRoll(){
 
   let roll=await getTodayRoll();
   if(roll){
-    // An account that already has today's official roll must never absorb
-    // badges from a different anonymous browser roll.
-    clearAnonymousRollClaim();
-    return roll;
-  }
-
-  const currentName=String(document.getElementById('chordName')?.textContent||'').trim()||null;
-  const currentDetail=String(document.getElementById('chordDetail')?.textContent||'').trim()||null;
-  const payload={
-    user_id:state.session.user.id,
-    roll_day:pending.roll_day,
-    notes,
-    score:analysis.score,
-    chord_name:pending.chord_name||currentName,
-    chord_detail:pending.chord_detail||currentDetail,
-    rarity:analysis.rarity
-  };
-  const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
-  if(error){
-    roll=await getTodayRoll();
-    if(roll){
+    const sameNotes=Array.isArray(roll.notes)&&roll.notes.length===6&&
+      roll.notes.map(Number).every((note,index)=>note===notes[index]);
+    if(!sameNotes){
       clearAnonymousRollClaim();
       return roll;
     }
-    throw error;
+  }else{
+    const payload={
+      user_id:state.session.user.id,
+      roll_day:pending.roll_day,
+      notes,
+      score:analysis.score,
+      chord_name:analysis.chordName||pending.chord_name||null,
+      chord_detail:analysis.chordDetail||pending.chord_detail||null,
+      rarity:analysis.rarity
+    };
+    const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
+    if(error){
+      roll=await getTodayRoll();
+      if(!roll)throw error;
+      const sameNotes=Array.isArray(roll.notes)&&roll.notes.length===6&&
+        roll.notes.map(Number).every((note,index)=>note===notes[index]);
+      if(!sameNotes){
+        clearAnonymousRollClaim();
+        return roll;
+      }
+    }else{
+      roll=data;
+    }
   }
-  roll=data;
 
   const badges=analysis.badges;
   if(roll&&badges.length){
@@ -1315,8 +1324,8 @@ async function persistCompletedRoll(){
         roll_day:localDayKey(),
         notes,
         score:analysis.score,
-        chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
-        chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
+        chord_name:analysis.chordName||String(document.getElementById('chordName')?.textContent||'').trim()||null,
+        chord_detail:analysis.chordDetail||String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
         rarity:analysis.rarity
       };
       const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
@@ -1982,7 +1991,8 @@ function decorateLeaderboardRoll(root,summary,{winner=false}={}){
     }
   }else{
     rarity.classList.add('leaderboard-roll-rarity-corner');
-    card.appendChild(rarity);
+    const scoreBlock=card.querySelector('.mock-roll-score-block');
+    (scoreBlock||card).appendChild(rarity);
   }
 
   return root;
@@ -2512,7 +2522,8 @@ async function initializeSignedInUser(user,{allowLocalReset=false}={}){
   await syncOwnedBadgesToLocal();
   state.todayRoll=await getTodayRoll(user.id);
 
-  if(!state.todayRoll){
+  const pending=readJson(PENDING_ANON_ROLL_KEY);
+  if(pending?.roll_day===localDayKey()){
     try{
       const savedPending=await persistPendingAnonymousRoll();
       if(savedPending){
