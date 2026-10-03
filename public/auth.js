@@ -30,6 +30,7 @@ const state = {
   leaderboardTodayProfiles: new Map(),
   anonymousPromptedDay: null,
   externalReplay: null,
+  replayLoadSeq: 0,
   homeNeedsReset: false,
   todayNewBadgeKeys: new Set(),
   firstDiscoveryKeys: new Set(),
@@ -1254,7 +1255,8 @@ function captureOwnMainSummary(){
 
 function exitExternalReplay({restoreOwn=true}={}){
   const prior=state.externalReplay;
-  if(!prior&&!document.documentElement.classList.contains('chordle-external-replay'))return;
+  state.replayLoadSeq++;
+  if(!prior&&!document.documentElement.classList.contains('chordle-external-replay')&&!isReplayHash())return;
 
   nativeApp()?.stopAllAudio?.();
   state.externalReplay=null;
@@ -1278,6 +1280,8 @@ function exitExternalReplay({restoreOwn=true}={}){
 async function loadReplayFromHash(){
   const target=replayTargetFromHash();
   if(!target)return false;
+  const requestedHash=location.hash;
+  const loadSeq=++state.replayLoadSeq;
   if(!/^\d+$/.test(String(target.rollId))){
     console.warn('Chordle replay: invalid roll id');
     return false;
@@ -1289,6 +1293,8 @@ async function loadReplayFromHash(){
     fetchProfileTarget(target.userKey),
     supabase.from('chordle_rolls').select('*').eq('id',target.rollId).maybeSingle()
   ]);
+
+  if(loadSeq!==state.replayLoadSeq||location.hash!==requestedHash)return false;
 
   const profile=profileResult;
   const roll=rollResult?.data||null;
