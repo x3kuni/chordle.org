@@ -1,0 +1,12 @@
+{
+  "name": "chordle",
+  "private": true,
+  "version": "0.91.0",
+  "devDependencies": {
+    "wrangler": "^4.135.0"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "preview": "wrangler preview"
+  }
+}
