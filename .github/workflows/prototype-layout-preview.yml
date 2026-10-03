@@ -28,17 +28,16 @@ jobs:
           from pathlib import Path
           text=Path("public/index.html").read_text(encoding="utf-8")
           terms=[
-              "updateNextChordCountdown",
-              "async function reveal",
-              "function reveal",
-              "function createMockRollCard",
-              "function createLeaderboardRow",
-              "wholeChordBadges",
-              "localStorage",
-              "toLocaleDateString",
-              "getFullYear()",
-              "getMonth()",
-              "nextChord"
+              "mock-roll-layout",
+              "mock-roll-score-block",
+              "score-rarity",
+              "REVEAL_DELAY",
+              "const ordinaryBadges",
+              "const ordinary=",
+              "const badges=analyze",
+              "analyze(notes)",
+              "refreshChordDate",
+              "function dailyRoll"
           ]
           lines=text.splitlines()
           for term in terms:
