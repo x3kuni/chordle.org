@@ -21,6 +21,43 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Validate Worker-generated browser scripts
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import worker from './worker.js';
+
+          const source=fs.readFileSync('./public/index.html','utf8');
+          const env={
+            ASSETS:{
+              async fetch(){
+                return new Response(source,{headers:{'content-type':'text/html; charset=UTF-8'}});
+              }
+            }
+          };
+          const response=await worker.fetch(new Request('https://prototype.local/'),env);
+          const html=await response.text();
+          fs.writeFileSync('/tmp/chordle-generated.html',html);
+
+          const scripts=[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
+          console.log('Generated inline scripts:',scripts.length);
+          console.log('Pacific helper present:',html.includes("CHORDLE_PACIFIC_TIME_ZONE='America/Los_Angeles'"));
+          console.log('Replay dedupe present:',html.includes('existingBadgeKeys=new Set(currentBadges.map'));
+
+          for(let i=0;i<scripts.length;i++){
+            const path='/tmp/chordle-inline-'+i+'.js';
+            fs.writeFileSync(path,scripts[i]);
+            const {spawnSync}=await import('node:child_process');
+            const result=spawnSync(process.execPath,['--check',path],{encoding:'utf8'});
+            if(result.status!==0){
+              console.error('Inline script '+i+' failed syntax check');
+              console.error(result.stderr||result.stdout);
+              process.exit(result.status||1);
+            }
+          }
+          NODE
+
       - name: Deploy Chordle layout prototype
         uses: cloudflare/wrangler-action@v4
         with:
