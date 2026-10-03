@@ -691,7 +691,7 @@ async function persistCompletedRoll(){
         user_id:state.session.user.id,
         badge_key:String(b.key||b.name||'unknown'),
         badge_name:String(b.name||'Badge'),
-        badge_description:String(b.desc||''),
+        badge_description:String(nativeApp()?.badgeDescription?.(b)||b.desc||''),
         rarity:String(b.rarity||'common').toLowerCase(),
         points:Math.max(0,Math.round(Number(b.points)||0)),
         special:!!b.special
