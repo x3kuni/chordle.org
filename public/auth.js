@@ -52,7 +52,7 @@ const RARITY_EMOJI={
   epic:"🟪",
   legendary:"🟨",
   mythic:"🟥",
-  ultra:"💗",
+  ultra:"🩷",
   godly:"🔳",
   supreme:"🌈",
   omnipotent:"⬛",
