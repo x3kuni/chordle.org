@@ -51,6 +51,8 @@ begin
 end;
 $function$;
 
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
 create or replace function public.handle_new_chordle_user()
 returns trigger
 language plpgsql
@@ -80,6 +82,8 @@ begin
   return new;
 end;
 $function$;
+
+revoke execute on function public.handle_new_chordle_user() from public, anon, authenticated;
 
 create table if not exists public.chordle_profile_likes (
   profile_id uuid not null references public.profiles(id) on delete cascade,
