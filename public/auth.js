@@ -114,8 +114,10 @@ function showSignup(){
 function showProfile(){
   const u=state.session?.user;if(!u)return;
   const p=state.profile||{};
-  const created=p.created_at||u.created_at||"—";
-  modal('<h2>'+esc(usernameFromUser(u))+'</h2><p class="ca-sub">This is the profile currently loaded from Supabase.</p><div class="ca-profile-grid"><div class="ca-k">Username</div><div class="ca-v">'+esc(usernameFromUser(u))+'</div><div class="ca-k">Email</div><div class="ca-v">'+esc(u.email||"—")+'</div><div class="ca-k">User ID</div><div class="ca-v">'+esc(u.id)+'</div><div class="ca-k">Created</div><div class="ca-v">'+esc(created)+'</div></div>');
+  const joined=p.joined_at||u.created_at||"—";
+  const lifetimeScore=p.lifetime_score??0;
+  const nameColor=p.name_color||"Default";
+  modal('<h2>'+esc(usernameFromUser(u))+'</h2><p class="ca-sub">This is the profile currently loaded from Supabase.</p><div class="ca-profile-grid"><div class="ca-k">Username</div><div class="ca-v">'+esc(usernameFromUser(u))+'</div><div class="ca-k">Lifetime score</div><div class="ca-v">'+esc(lifetimeScore)+'</div><div class="ca-k">Name color</div><div class="ca-v">'+esc(nameColor)+'</div><div class="ca-k">Email</div><div class="ca-v">'+esc(u.email||"—")+'</div><div class="ca-k">Joined</div><div class="ca-v">'+esc(joined)+'</div></div>');
 }
 
 async function logout(){await supabase.auth.signOut();state.session=null;state.profile=null;render();}
