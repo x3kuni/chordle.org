@@ -2029,6 +2029,7 @@ function signupFormMarkup(){
 }
 
 function showLogin(existingOverlay=null){
+  captureAnonymousRoll({requireComplete:false});
   clearProfileLoginHighlight();
   const o=existingOverlay||modal('');
   o.classList.remove('ca-save-overlay');
@@ -2040,6 +2041,7 @@ function showLogin(existingOverlay=null){
     if(submit?.disabled)return;
     if(submit)submit.disabled=true;
     msg.textContent="Signing in…";
+    captureAnonymousRoll({requireComplete:false});
     const fd=new FormData(f);
     const {data,error}=await supabase.auth.signInWithPassword({email:String(fd.get("email")).trim(),password:String(fd.get("password"))});
     if(error){
@@ -2059,6 +2061,7 @@ function showLogin(existingOverlay=null){
 }
 
 function showSignup(existingOverlay=null){
+  captureAnonymousRoll({requireComplete:false});
   clearProfileLoginHighlight();
   const o=existingOverlay||modal('');
   o.classList.remove('ca-save-overlay');
@@ -2084,6 +2087,21 @@ function showSignup(existingOverlay=null){
     }
 
     if(submit)submit.disabled=true;
+    captureAnonymousRoll({requireComplete:false});
+    msg.textContent="Checking username…";
+    const {data:taken,error:usernameError}=await supabase.from('profiles')
+      .select('id').ilike('username',uname).limit(1);
+    if(usernameError){
+      msg.textContent="Could not check that username right now. Please try again.";
+      if(submit)submit.disabled=false;
+      return;
+    }
+    if(taken?.length){
+      msg.textContent="That username is already taken. Choose another one.";
+      if(submit)submit.disabled=false;
+      return;
+    }
+
     msg.textContent="Creating account…";
     writeJson(SIGNUP_COOLDOWN_KEY,{email,at:Date.now()});
     const {data,error}=await supabase.auth.signUp({email,password:String(fd.get("password")),options:{data:{username:uname}}});
@@ -2279,7 +2297,10 @@ function wireRollCompletion(){
       syncShareButton();
       if(!next.classList.contains("visible")||state.restoring||state.externalReplay)return;
       if(state.session?.user)setTimeout(persistCompletedRoll,0);
-      else setTimeout(showAnonymousSavePrompt,180);
+      else{
+        captureAnonymousRoll({requireComplete:true});
+        setTimeout(showAnonymousSavePrompt,180);
+      }
     });
     observer.observe(next,{attributes:true,attributeFilter:["class"]});
   }
@@ -2295,6 +2316,8 @@ function wireRollCompletion(){
 }
 
 async function boot(){
+  installChordleFavicon();
+  mountDiscordLink();
   unlockExistingPages();
   configureLeaderboardTabs();
   mountSiteFooter();
@@ -2321,8 +2344,11 @@ async function boot(){
   syncLifetimeDisplay();
   syncAnonymousAccountAttention();
   syncShareButton();
-  if(!data.session?.user && document.getElementById("nextChord")?.classList.contains("visible")){
-    setTimeout(showAnonymousSavePrompt,250);
+  if(!data.session?.user){
+    captureAnonymousRoll({requireComplete:false});
+    if(document.getElementById("nextChord")?.classList.contains("visible")){
+      setTimeout(showAnonymousSavePrompt,250);
+    }
   }
 
   if(isReplayHash())await loadReplayFromHash();
