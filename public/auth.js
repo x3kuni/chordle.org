@@ -56,13 +56,13 @@ style.textContent=`
 .ca-best-roll{padding:16px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)}
 .ca-best-roll-name{font-size:18px;font-weight:850}
 .ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
-.leaderboard-winner-card .mock-roll-score-block{min-height:96px!important;padding-bottom:8px!important}
-.leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px)!important;line-height:.96!important;padding:0 6px 8px!important}
-.leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px)!important;line-height:.96!important}
-.profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px)!important;line-height:.96!important}
+.leaderboard-winner-card .mock-roll-score-block{min-height:96px;padding-bottom:8px}
+.leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px);line-height:.96;padding:0 6px 8px}
+.leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px);line-height:.96}
+.profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
 @media(max-width:620px){
   .ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}
-  .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(50px,14vw,82px)!important}
+  .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(50px,14vw,82px)}
 }
 `;
 document.head.appendChild(style);
