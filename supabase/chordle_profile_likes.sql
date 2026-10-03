@@ -95,6 +95,9 @@ create table if not exists public.chordle_profile_likes (
 
 alter table public.chordle_profile_likes enable row level security;
 
+create index if not exists chordle_profile_likes_liker_id_idx
+  on public.chordle_profile_likes (liker_id);
+
 grant select on table public.chordle_profile_likes to anon, authenticated;
 grant insert, delete on table public.chordle_profile_likes to authenticated;
 
@@ -113,7 +116,7 @@ create policy "Users can like other Chordle profiles"
   with check (
     (select auth.uid()) = liker_id
     and liker_id <> profile_id
-    and coalesce((select (auth.jwt()->>'is_anonymous')::boolean), false) is false
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) is false
   );
 
 drop policy if exists "Users can remove their own Chordle profile likes" on public.chordle_profile_likes;
@@ -123,5 +126,5 @@ create policy "Users can remove their own Chordle profile likes"
   to authenticated
   using (
     (select auth.uid()) = liker_id
-    and coalesce((select (auth.jwt()->>'is_anonymous')::boolean), false) is false
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) is false
   );
