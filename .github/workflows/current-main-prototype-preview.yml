@@ -78,7 +78,7 @@ jobs:
           sleep 3
 
           curl -fsSL "$URL" -o /tmp/chordle-live.html
-          grep -q 'current-main-polish-20261003-1' /tmp/chordle-live.html
+          grep -q 'current-main-polish-20261003-2' /tmp/chordle-live.html
 
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           if [ -z "$CHROME" ]; then
