@@ -1744,9 +1744,16 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
   const titleEl=document.getElementById('leaderboardTitle');
   if(!list)return;
 
-  // Only the ranking list is replaced on tab changes. The #1 Today showcase
-  // stays mounted so it no longer flashes away and rebuilds every click.
-  list.replaceChildren();
+  // Keep the current rows visible while fresh data is fetched. The replacement
+  // is built off-DOM and swapped in only when the whole ranking is ready.
+  const nextList=document.createDocumentFragment();
+  let nextCount=0;
+  const appendRow=row=>{
+    if(!row)return;
+    nextList.appendChild(row);
+    nextCount++;
+  };
+
   if(titleEl)titleEl.textContent="Today's Leaderboard";
   if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
@@ -1764,10 +1771,8 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
 
   if(state.leaderboardTab==='today'){
     todayRolls.slice(1).forEach((roll,index)=>{
-      if(seq!==state.leaderboardRenderSeq)return;
       const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll),roll);
-      if(row)list.appendChild(row);
+      appendRow(renderedLeaderboardRow(profile,index+2,rollSummary(roll),roll));
     });
   }else if(state.leaderboardTab==='alltime'){
     const rolls=await bestRollsByUser(true);
@@ -1776,8 +1781,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     if(seq!==state.leaderboardRenderSeq)return;
     rolls.forEach((roll,index)=>{
       const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll),roll);
-      if(row)list.appendChild(row);
+      appendRow(renderedLeaderboardRow(profile,index+1,rollSummary(roll),roll));
     });
   }else if(state.leaderboardTab==='lifetime'){
     const {data,error}=await supabase.from('profiles')
@@ -1787,8 +1791,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     if(seq!==state.leaderboardRenderSeq)return;
     if(error)console.warn('Chordle lifetime leaderboard:',error.message);
     (data||[]).forEach((profile,index)=>{
-      const row=renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)+' lifetime');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)));
     });
   }else if(state.leaderboardTab==='badges'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
@@ -1801,8 +1804,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
-      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges'));
     });
   }else if(state.leaderboardTab==='discovered'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
@@ -1817,15 +1819,18 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
-      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered'));
     });
   }
 
   if(seq!==state.leaderboardRenderSeq)return;
-  if(!list.children.length){
-    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  if(!nextCount){
+    const empty=document.createElement('div');
+    empty.className='profile-badges-empty';
+    empty.textContent='No results yet.';
+    nextList.appendChild(empty);
   }
+  list.replaceChildren(nextList);
 
   document.getElementById('leaderboardTabs')?.querySelectorAll('.leaderboard-tab').forEach(btn=>{
     const active=btn.dataset.leaderboardTab===state.leaderboardTab;
@@ -1833,6 +1838,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     btn.setAttribute('aria-selected',active?'true':'false');
   });
   nativeApp()?.queueMockScoreFit?.(document);
+  requestAnimationFrame(()=>document.querySelectorAll('#leaderboardPage .mock-profile-link').forEach(fitProfileName));
 }
 
 async function refreshBadgeExistCounts(){
