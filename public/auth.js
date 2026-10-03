@@ -16,6 +16,7 @@ const SEEN_BADGES_KEY = "chordle_seen_badges_v1";
 const PENDING_ANON_ROLL_KEY = "chordle_pending_anonymous_roll_v1";
 const SIGNUP_COOLDOWN_KEY = "chordle_signup_cooldown_v1";
 const SIGNUP_COOLDOWN_MS = 60000;
+const CHORDLE_DISCORD_URL = "https://discord.gg/vsWx9n2S4";
 
 const state = {
   session: null,
@@ -127,12 +128,28 @@ html.chordle-roll-history-route .admin-luck{display:none!important}
 .profile-like-control[hidden]{display:none!important}
 .profile-like-heart{
   appearance:none;border:0;background:transparent;color:#a8adb6;padding:2px 3px;cursor:pointer;
-  font:900 31px/1 Georgia,"Times New Roman",serif;transition:color .14s ease,transform .14s ease,filter .14s ease;
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:color .14s ease,transform .14s ease,filter .14s ease;
 }
-.profile-like-heart:hover{color:#ff6978;transform:scale(1.08)}
-.profile-like-heart.is-liked{color:#ff455c;filter:drop-shadow(0 0 7px rgba(255,69,92,.30))}
-.profile-like-heart:disabled{cursor:default;opacity:.72}
+.profile-like-heart svg{display:block;width:29px;height:27px;overflow:visible}
+.profile-like-heart-shape{
+  fill:transparent;stroke:currentColor;stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round;
+  transition:fill .14s ease,stroke .14s ease;
+}
+.profile-like-heart:hover{color:#ff6978;transform:scale(1.06)}
+.profile-like-heart.is-liked,
+.profile-like-heart.is-count-display{color:#e53945;filter:drop-shadow(0 0 6px rgba(229,57,69,.24))}
+.profile-like-heart.is-liked .profile-like-heart-shape,
+.profile-like-heart.is-count-display .profile-like-heart-shape{fill:currentColor;stroke:currentColor}
+.profile-like-heart:disabled{cursor:default;transform:none}
 .profile-like-count{min-width:18px;color:#b7bbc3;font-size:12px;font-weight:850;font-variant-numeric:tabular-nums}
+.chordle-discord-link{
+  display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
+  margin-left:8px;color:#aeb4c0;text-decoration:none!important;vertical-align:middle;flex:0 0 auto;
+  opacity:.9;transition:color .14s ease,opacity .14s ease,transform .14s ease;
+}
+.chordle-discord-link:hover{color:#ffffff;opacity:1;transform:translateY(-1px)}
+.chordle-discord-link svg{display:block;width:19px;height:19px}
 .badge-detail-profile-link{border-bottom-color:transparent!important;text-decoration:none!important}
 .badge-detail-profile-link:hover{border-bottom-color:currentColor!important;text-decoration:none!important}
 .roll-detail-badge.badge.common:hover .roll-detail-badge-name,
@@ -290,6 +307,64 @@ function rarityEmoji(rarity){
 
 function rarityAtLeast(rarity,minimum){
   return RARITY_ORDER.indexOf(String(rarity||'common').toLowerCase())>=RARITY_ORDER.indexOf(minimum);
+}
+
+function chordleHeartSvg(){
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="profile-like-heart-shape" d="M12 21.15C10.58 19.9 3.36 14.14 2.28 9.53C1.39 5.72 3.86 2.42 7.62 2.42C9.55 2.42 11.17 3.38 12 4.72C12.83 3.38 14.45 2.42 16.38 2.42C20.14 2.42 22.61 5.72 21.72 9.53C20.64 14.14 13.42 19.9 12 21.15Z"/></svg>';
+}
+
+function installChordleFavicon(){
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="3" y="3" width="58" height="58" rx="14" fill="#111217" stroke="#f3f4f6" stroke-width="3"/><path d="M47 18.5C42.7 13.2 36.5 10.5 29.1 10.5C16.8 10.5 8.5 19.3 8.5 32S16.8 53.5 29.1 53.5C36.6 53.5 42.8 50.7 47.2 45.2L39.5 38.9C36.7 42.1 33.5 43.6 29.6 43.6C22.8 43.6 18.1 39 18.1 32C18.1 25 22.8 20.4 29.6 20.4C33.5 20.4 36.7 21.9 39.5 25.1Z" fill="#f5f6f8"/></svg>';
+  let link=document.querySelector('link[data-chordle-favicon]');
+  if(!link){
+    link=document.createElement('link');
+    link.rel='icon';
+    link.type='image/svg+xml';
+    link.dataset.chordleFavicon='true';
+    document.head.appendChild(link);
+  }
+  link.href='data:image/svg+xml,'+encodeURIComponent(svg);
+}
+
+function discordLogoSvg(){
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.7 5.2A16.2 16.2 0 0 0 15 4.1l-.5 1a13.9 13.9 0 0 0-5 0l-.5-1a16 16 0 0 0-3.7 1.1C2.9 8.8 2.2 12.3 2.5 15.8a15 15 0 0 0 4.6 2.3l1.1-1.5a9.8 9.8 0 0 1-1.7-.8l.4-.3c3.3 1.5 6.8 1.5 10.1 0l.5.3c-.6.3-1.2.6-1.8.8l1.1 1.5a15 15 0 0 0 4.6-2.3c.4-4.1-.7-7.6-2.7-10.6ZM9.1 14.2c-1 0-1.8-.9-1.8-2s.8-2 1.8-2c1 0 1.8.9 1.8 2s-.8 2-1.8 2Zm5.8 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2c1 0 1.8.9 1.8 2s-.8 2-1.8 2Z"/></svg>';
+}
+
+function mountDiscordLink(attempt=0){
+  if(document.getElementById('chordleDiscordLink'))return;
+  const home=document.getElementById('homeLink');
+  let target=(home&&/chordle/i.test(String(home.textContent||'')))?home:null;
+
+  if(!target){
+    const candidates=[...document.querySelectorAll('a,button,span,div,h1,h2')];
+    target=candidates.find(el=>{
+      if(el.id==='chordleDiscordLink')return false;
+      const ownText=[...el.childNodes]
+        .filter(node=>node.nodeType===Node.TEXT_NODE)
+        .map(node=>String(node.textContent||''))
+        .join(' ')
+        .replace(/\s+/g,' ')
+        .trim();
+      return /^CHORDLE\s*\[BETA\]$/i.test(ownText);
+    })||null;
+  }
+
+  if(!target&&home)target=home;
+  if(!target){
+    if(attempt<8)setTimeout(()=>mountDiscordLink(attempt+1),250);
+    return;
+  }
+
+  const link=document.createElement('a');
+  link.id='chordleDiscordLink';
+  link.className='chordle-discord-link';
+  link.href=CHORDLE_DISCORD_URL;
+  link.target='_blank';
+  link.rel='noopener noreferrer';
+  link.title='Join the Chordle Discord';
+  link.setAttribute('aria-label','Join the Chordle Discord');
+  link.innerHTML=discordLogoSvg();
+  target.insertAdjacentElement('afterend',link);
 }
 
 function showCopyToast(message="Chord copied to clipboard"){
