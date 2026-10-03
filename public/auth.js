@@ -30,6 +30,8 @@ const state = {
   leaderboardTodayProfiles: new Map(),
   anonymousPromptedDay: null,
   externalReplay: null,
+  replayLoadSeq: 0,
+  homeNeedsReset: false,
   todayNewBadgeKeys: new Set(),
   firstDiscoveryKeys: new Set(),
   dayKey: localDayKey()
@@ -1057,7 +1059,7 @@ function renderBestRoll(best,targetProfile=null){
   const summary=rollSummary(best);
   const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
   if(card){
-    addReplayRollButton(card,summary,targetProfile||{id:best.user_id,username:'Player'});
+    addReplayRollButton(card,summary,targetProfile||{id:best.user_id,username:'Player'},best.id);
     el.appendChild(card);
     nativeApp()?.queueMockScoreFit?.(el);
   }else{
@@ -1189,34 +1191,168 @@ function isMainHash(){
   return hash==='#home'||hash===''||hash==='#';
 }
 
-async function startOtherRollReplay(profile,summary){
-  if(!summary||!Array.isArray(summary.notes)||summary.notes.length!==6)return;
+function isReplayHash(hash=location.hash||''){
+  return /^#replay\/[^/]+\/[^/]+$/.test(hash);
+}
+
+function replayTargetFromHash(hash=location.hash||''){
+  const match=hash.match(/^#replay\/([^/]+)\/([^/]+)$/);
+  if(!match)return null;
+  try{
+    return {
+      userKey:decodeURIComponent(match[1]),
+      rollId:decodeURIComponent(match[2])
+    };
+  }catch{
+    return null;
+  }
+}
+
+function replayHref(profile,rollId){
+  const userKey=profile?.public_id??profile?.id;
+  if(userKey===undefined||userKey===null||!rollId)return '#home';
+  return '#replay/'+encodeURIComponent(String(userKey))+'/'+encodeURIComponent(String(rollId));
+}
+
+function captureOwnMainSummary(){
+  if(state.todayRoll){
+    const summary=rollSummary(state.todayRoll);
+    if(summary)return summary;
+  }
+
+  const pending=readJson(PENDING_ANON_ROLL_KEY);
+  if(pending?.roll_day===localDayKey()&&Array.isArray(pending.notes)&&pending.notes.length===6){
+    const notes=pending.notes.map(Number);
+    if(notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36)){
+      return {
+        notes,
+        badges:badgeObjectsForNotes(notes),
+        score:Math.max(0,Math.round(Number(pending.score)||0)),
+        rarity:String(pending.rarity||'common').toLowerCase(),
+        rarityLabel:titleCaseRarity(pending.rarity||'common'),
+        chordName:pending.chord_name||'Chord',
+        chordDetail:pending.chord_detail||''
+      };
+    }
+  }
+
+  const notes=currentDailyNotes();
+  const next=document.getElementById('nextChord');
+  const score=Math.max(0,Math.round(numericText(document.getElementById('score'))));
+  if(notes&&score>0&&next?.classList.contains('visible')){
+    return {
+      notes,
+      badges:badgeObjectsForNotes(notes),
+      score,
+      rarity:currentRarityId(),
+      rarityLabel:String(document.getElementById('scoreRarity')?.textContent||titleCaseRarity(currentRarityId())).trim(),
+      chordName:String(document.getElementById('chordName')?.textContent||'Chord').trim()||'Chord',
+      chordDetail:String(document.getElementById('chordDetail')?.textContent||'').trim()
+    };
+  }
+  return null;
+}
+
+function exitExternalReplay({restoreOwn=true}={}){
+  const prior=state.externalReplay;
+  state.replayLoadSeq++;
+  if(!prior&&!document.documentElement.classList.contains('chordle-external-replay')&&!isReplayHash())return;
+
+  nativeApp()?.stopAllAudio?.();
+  state.externalReplay=null;
+  document.documentElement.classList.remove('chordle-external-replay');
+  clearReplayPanel();
+
+  if(restoreOwn){
+    const own=prior?.returnSummary||captureOwnMainSummary();
+    if(own){
+      nativeApp()?.restoreCompletedRoll?.(own);
+      state.homeNeedsReset=false;
+    }else{
+      state.homeNeedsReset=true;
+    }
+  }
+
+  applyCachedDiscoveryTags();
+  syncShareButton();
+}
+
+async function loadReplayFromHash(){
+  const target=replayTargetFromHash();
+  if(!target)return false;
+  const requestedHash=location.hash;
+  const loadSeq=++state.replayLoadSeq;
+  if(!/^\d+$/.test(String(target.rollId))){
+    console.warn('Chordle replay: invalid roll id');
+    return false;
+  }
+
   nativeApp()?.stopAllAudio?.();
 
+  const [profileResult,rollResult]=await Promise.all([
+    fetchProfileTarget(target.userKey),
+    supabase.from('chordle_rolls').select('*').eq('id',target.rollId).maybeSingle()
+  ]);
+
+  if(loadSeq!==state.replayLoadSeq||location.hash!==requestedHash)return false;
+
+  const profile=profileResult;
+  const roll=rollResult?.data||null;
+  if(rollResult?.error){
+    console.warn('Chordle replay roll lookup:',rollResult.error.message);
+    return false;
+  }
+  if(!profile||!roll||roll.user_id!==profile.id){
+    console.warn('Chordle replay: profile/roll mismatch or unavailable');
+    return false;
+  }
+
+  const summary=rollSummary(roll);
+  if(!summary)return false;
+
+  const existingRouteKey=state.externalReplay?.routeKey;
+  const routeKey=String(target.userKey)+':'+String(target.rollId);
+  if(existingRouteKey===routeKey)return true;
+
+  const returnSummary=state.externalReplay?.returnSummary||captureOwnMainSummary();
   state.externalReplay={
-    userId:profile?.id||null,
-    username:profile?.username||'Player',
+    userId:profile.id,
+    publicId:profile.public_id??null,
+    username:profile.username||'Player',
+    rollId:roll.id,
+    routeKey,
+    returnSummary,
     summary
   };
+  state.homeNeedsReset=false;
   document.documentElement.classList.add('chordle-external-replay');
   mountReplayPanel(state.externalReplay.username);
+  applyCachedDiscoveryTags();
   syncShareButton();
-
-  if(!isMainHash()){
-    location.hash='#home';
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-  }
 
   window.scrollTo({top:0,left:0,behavior:'auto'});
   await nativeApp()?.startExternalReplay?.(summary);
   syncShareButton();
+  return true;
 }
 
-function addReplayRollButton(root,summary,profile){
+function startOtherRollReplay(profile,summary,rollId){
+  if(!summary||!Array.isArray(summary.notes)||summary.notes.length!==6||!rollId)return;
+  const href=replayHref(profile,rollId);
+  if(href==='#home')return;
+
+  if(location.hash===href){
+    void loadReplayFromHash();
+  }else{
+    location.hash=href;
+  }
+}
+
+function addReplayRollButton(root,summary,profile,rollId){
   const card=root?.classList?.contains('mock-roll-card')?root:root?.querySelector?.('.mock-roll-card');
   const head=card?.querySelector?.('.roll-detail-head');
   const play=head?.querySelector?.('.roll-detail-play');
-  if(!card||!head||!play||head.querySelector('.roll-detail-replay'))return card;
+  if(!card||!head||!play||head.querySelector('.roll-detail-replay')||!rollId)return card;
 
   let actions=head.querySelector('.roll-detail-actions');
   if(!actions){
@@ -1233,7 +1369,7 @@ function addReplayRollButton(root,summary,profile){
   replay.addEventListener('click',event=>{
     event.preventDefault();
     event.stopPropagation();
-    void startOtherRollReplay(profile,summary);
+    startOtherRollReplay(profile,summary,rollId);
   });
   actions.insertBefore(replay,play);
   return card;
@@ -1256,12 +1392,12 @@ async function profileMapFor(ids){
   return new Map((data||[]).map(p=>[p.id,p]));
 }
 
-function renderedLeaderboardRow(profile,rank,summary){
+function renderedLeaderboardRow(profile,rank,summary,roll=null){
   const account={id:profile.id,name:profile.username||'Player'};
   const row=nativeApp()?.createLeaderboardRow?.(account,rank,summary);
   if(row){
     patchRenderedProfileLink(row,profile);
-    addReplayRollButton(row,summary,profile);
+    addReplayRollButton(row,summary,profile,roll?.id);
   }
   return row;
 }
@@ -1322,7 +1458,7 @@ function renderStableWinner(todayRolls,todayProfiles){
         if(existingPiano)existingPiano.replaceWith(exactPiano);
         else card.prepend(exactPiano);
       }
-      addReplayRollButton(card,summary,profile);
+      addReplayRollButton(card,summary,profile,winner.id);
     }
     const by=document.createElement('div');
     by.className='leaderboard-winner-by';
@@ -1372,7 +1508,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     todayRolls.slice(1).forEach((roll,index)=>{
       if(seq!==state.leaderboardRenderSeq)return;
       const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll));
+      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll),roll);
       if(row)list.appendChild(row);
     });
   }else if(state.leaderboardTab==='alltime'){
@@ -1382,7 +1518,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     if(seq!==state.leaderboardRenderSeq)return;
     rolls.forEach((roll,index)=>{
       const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll),roll);
       if(row)list.appendChild(row);
     });
   }else if(state.leaderboardTab==='lifetime'){
@@ -1653,6 +1789,14 @@ async function initializeSignedInUser(user){
   else if(document.getElementById("nextChord")?.classList.contains("visible"))await persistCompletedRoll();
 }
 
+function wireReplayExitNavigation(){
+  for(const id of ['homeLink','leaderboardNavBtn','badgesNavBtn','profileNavBtn','settingsBtn']){
+    document.getElementById(id)?.addEventListener('click',()=>{
+      if(state.externalReplay||isReplayHash())exitExternalReplay({restoreOwn:true});
+    },true);
+  }
+}
+
 function wireNavigation(){
   document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
     clearProfileLoginHighlight();
@@ -1681,8 +1825,20 @@ function wireNavigation(){
   },true);
 
   window.addEventListener('hashchange',()=>{
-    if(!isMainHash())nativeApp()?.stopAllAudio?.();
-    setTimeout(()=>{
+    nativeApp()?.stopAllAudio?.();
+    setTimeout(async()=>{
+      if(isReplayHash()){
+        await loadReplayFromHash();
+        return;
+      }
+
+      if(state.externalReplay)exitExternalReplay({restoreOwn:true});
+
+      if(isMainHash()&&state.homeNeedsReset){
+        location.reload();
+        return;
+      }
+
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -1721,6 +1877,7 @@ async function boot(){
   mountInfoPage();
   mountShareButton();
   wireFirstDiscoveryBadges();
+  wireReplayExitNavigation();
   wireNavigation();
   wireRollCompletion();
 
@@ -1744,7 +1901,8 @@ async function boot(){
     setTimeout(showAnonymousSavePrompt,250);
   }
 
-  if(renderInfoRoute()){}
+  if(isReplayHash())await loadReplayFromHash();
+  else if(renderInfoRoute()){}
   else if(location.hash.startsWith('#profile'))await renderProfile();
   else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
   else if(location.hash==='#badges')await refreshBadgeExistCounts();
@@ -1756,6 +1914,7 @@ async function boot(){
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
       syncAnonymousAccountAttention();
+      if(isReplayHash()){await loadReplayFromHash();return;}
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -1774,4 +1933,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay};
