@@ -2089,6 +2089,7 @@ function showSignup(existingOverlay=null){
     if(submit)submit.disabled=true;
     captureAnonymousRoll({requireComplete:false});
     msg.textContent="Checking username…";
+    const usernamePattern=uname.replace(/[\\%_]/g,'\\    msg.textContent="Checking username…";
     const {data:taken,error:usernameError}=await supabase.from('profiles')
       .select('id').ilike('username',uname).limit(1);
     if(usernameError){
@@ -2097,6 +2098,22 @@ function showSignup(existingOverlay=null){
       return;
     }
     if(taken?.length){
+      msg.textContent="That username is already taken. Choose another one.";
+      if(submit)submit.disabled=false;
+      return;
+    }
+');
+    const {data:usernameMatches,error:usernameError}=await supabase.from('profiles')
+      .select('username').ilike('username',usernamePattern).limit(20);
+    if(usernameError){
+      msg.textContent="Could not check that username right now. Please try again.";
+      if(submit)submit.disabled=false;
+      return;
+    }
+    const usernameTaken=(usernameMatches||[]).some(row=>
+      String(row.username||'').toLowerCase()===uname.toLowerCase()
+    );
+    if(usernameTaken){
       msg.textContent="That username is already taken. Choose another one.";
       if(submit)submit.disabled=false;
       return;
