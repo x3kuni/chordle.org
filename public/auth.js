@@ -120,7 +120,7 @@ function syncLifetimeDisplay(){
 
 async function getTodayRoll(userId=state.session?.user?.id){
   if(!userId)return null;
-  const {data,error}=await supabase.from("daily_rolls")
+  const {data,error}=await supabase.from("chordle_rolls")
     .select("*").eq("user_id",userId).eq("roll_day",localDayKey()).maybeSingle();
   if(error){
     if(String(error.message||"").toLowerCase().includes("daily_rolls")) return null;
@@ -131,7 +131,7 @@ async function getTodayRoll(userId=state.session?.user?.id){
 
 async function getRollBadges(rollId){
   if(!rollId)return [];
-  const {data,error}=await supabase.from("daily_roll_badges")
+  const {data,error}=await supabase.from("chordle_roll_badges")
     .select("*").eq("roll_id",rollId).order("points",{ascending:false});
   if(error)return [];
   return data||[];
@@ -139,7 +139,7 @@ async function getRollBadges(rollId){
 
 async function getOwnedBadges(userId){
   if(!userId)return [];
-  const {data,error}=await supabase.from("user_badges")
+  const {data,error}=await supabase.from("chordle_user_badges")
     .select("*").eq("user_id",userId).order("points",{ascending:false});
   if(error)return [];
   return data||[];
@@ -198,7 +198,7 @@ async function persistCompletedRoll(){
         chord_detail:String(document.getElementById("chordDetail")?.textContent||"").trim()||null,
         rarity:currentRarityId()
       };
-      const {data,error}=await supabase.from("daily_rolls").insert(payload).select("*").single();
+      const {data,error}=await supabase.from("chordle_rolls").insert(payload).select("*").single();
       if(error){
         roll=await getTodayRoll();
         if(!roll)throw error;
@@ -218,7 +218,7 @@ async function persistCompletedRoll(){
           points:Math.max(0,Math.round(Number(b.points)||0)),
           special:!!b.special
         }));
-        const {error:badgeError}=await supabase.from("daily_roll_badges").insert(rows);
+        const {error:badgeError}=await supabase.from("chordle_roll_badges").insert(rows);
         if(badgeError)console.warn("Chordle badge save:",badgeError.message);
       }
     }
@@ -391,8 +391,8 @@ async function renderProfile(){
   if(colorControl)colorControl.hidden=true;
 
   const [{data:best},{data:badges}]=await Promise.all([
-    supabase.from("daily_rolls").select("*").eq("user_id",user.id).order("score",{ascending:false}).limit(1).maybeSingle(),
-    supabase.from("user_badges").select("*").eq("user_id",user.id).order("points",{ascending:false}).limit(10)
+    supabase.from("chordle_rolls").select("*").eq("user_id",user.id).order("score",{ascending:false}).limit(1).maybeSingle(),
+    supabase.from("chordle_user_badges").select("*").eq("user_id",user.id).order("points",{ascending:false}).limit(10)
   ]);
   renderBestRoll(best||null);
   renderTopBadges(badges||[]);
@@ -433,27 +433,27 @@ async function renderLeaderboard(tab=state.leaderboardTab){
     if(title)title.textContent="All-Time Leaderboard";
     if(date)date.textContent="Lifetime score";
   }else if(state.leaderboardTab==="today"){
-    const {data}=await supabase.from("daily_rolls").select("user_id,score,chord_name,rarity").eq("roll_day",localDayKey()).order("score",{ascending:false}).limit(100);
+    const {data}=await supabase.from("chordle_rolls").select("user_id,score,chord_name,rarity").eq("roll_day",localDayKey()).order("score",{ascending:false}).limit(100);
     const rolls=data||[], map=await profileMapFor(rolls.map(r=>r.user_id));
     rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
     if(title)title.textContent="Today's Leaderboard";
     if(date)date.textContent=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
   }else if(state.leaderboardTab==="lowest"){
-    const {data}=await supabase.from("daily_rolls").select("user_id,score").order("score",{ascending:true}).limit(1000);
+    const {data}=await supabase.from("chordle_rolls").select("user_id,score").order("score",{ascending:true}).limit(1000);
     const first=new Map();for(const r of (data||[]))if(!first.has(r.user_id))first.set(r.user_id,r);
     const rolls=[...first.values()].slice(0,100), map=await profileMapFor(rolls.map(r=>r.user_id));
     rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
     if(title)title.textContent="Lowest Rolls";
     if(date)date.textContent="Lowest recorded official roll";
   }else if(state.leaderboardTab==="badges"){
-    const {data}=await supabase.from("user_badges").select("user_id,badge_key");
+    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key");
     const counts=new Map();for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
     const ids=[...counts.keys()], map=await profileMapFor(ids);
     rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" badges"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
     if(title)title.textContent="Most Badges";
     if(date)date.textContent="Unique collectible badges owned";
   }else if(state.leaderboardTab==="discovered"){
-    const {data}=await supabase.from("user_badges").select("user_id,badge_key,discovered_at").order("discovered_at",{ascending:true});
+    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key,discovered_at").order("discovered_at",{ascending:true});
     const firstByBadge=new Map();for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
     const counts=new Map();for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
     const ids=[...counts.keys()], map=await profileMapFor(ids);
@@ -475,7 +475,7 @@ async function renderLeaderboard(tab=state.leaderboardTab){
 }
 
 async function refreshBadgeExistCounts(){
-  const {data,error}=await supabase.from("user_badges").select("user_id,badge_key");
+  const {data,error}=await supabase.from("chordle_user_badges").select("user_id,badge_key");
   if(error)return;
   const owners=new Map();
   for(const b of (data||[])){
