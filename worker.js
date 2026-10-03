@@ -169,6 +169,7 @@ export default {
 
   window.__CHORDLE_APP__={
     createRollCard:createMockRollCard,
+    createLeaderboardMiniPiano,
     createLeaderboardRow,
     createLeaderboardMetricRow,
     createProfileBadgeRow,
@@ -200,7 +201,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=share-badges-auth-pr9-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=leaderboard-first-share-pr10-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
