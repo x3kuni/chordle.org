@@ -129,11 +129,19 @@ style.textContent=`
   margin:0 0 14px;color:#eef0f4;font-size:15px;font-weight:900;
   letter-spacing:.08em;text-transform:uppercase;
 }
-.profile-first-discoveries-list{display:flex;flex-direction:column;align-items:flex-start;gap:9px}
+.profile-first-discoveries-list{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;
+}
+.profile-first-discovery-item{
+  display:inline-flex;align-items:center;gap:10px;min-width:0;
+}
 .profile-first-discovery-link{
   appearance:none;border:0;background:transparent;padding:0;
   font:800 16px/1.25 inherit;text-align:left;cursor:pointer;
   max-width:100%;white-space:normal;
+}
+.profile-first-discovery-separator{
+  color:#737983;font-size:14px;font-weight:900;line-height:1;
 }
 .profile-first-discovery-link:hover,
 .profile-first-discovery-link:focus-visible{
@@ -248,6 +256,8 @@ html.chordle-external-replay #rerollBtn,
 html.chordle-external-replay #shareChordBtn{display:none!important}
 html.chordle-external-replay #badges .badge-new-tag,
 html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!important}
+html.chordle-external-replay #lifetimeScore,
+html.chordle-external-replay #nextChord{display:none!important}
 .leaderboard-row-card,
 .leaderboard-row-card .mock-roll-card,
 .leaderboard-row-card.mock-roll-card,
@@ -275,6 +285,9 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   min-height:15px!important;
   line-height:1!important;
 }
+.leaderboard-row-card{
+  grid-template-columns:minmax(0,1fr) minmax(330px,42%)!important;
+}
 .leaderboard-row-card .mock-roll-score-block,
 .chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block{
   align-self:stretch!important;
@@ -299,14 +312,16 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 }
 .leaderboard-roll-rarity-corner{
   position:absolute!important;
-  top:10px!important;
-  right:9px!important;
+  top:6px!important;
+  right:6px!important;
   bottom:auto!important;
   left:auto!important;
   z-index:4;
   width:auto!important;
   margin:0!important;
   text-align:right!important;
+  font-size:12px!important;
+  letter-spacing:.15em!important;
 }
 .leaderboard-winner-meta-row{
   display:flex!important;
@@ -1602,9 +1617,15 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
   const uniqueOwnedRows=[...new Map(rows.map(row=>[String(row.badge_key),row])).values()];
   const discovered=uniqueOwnedRows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
   discovered.sort((a,b)=>{
-    const ar=String(a.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(a.badge_key))?.rarity||'common').toLowerCase();
-    const br=String(b.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(b.badge_key))?.rarity||'common').toLowerCase();
-    return RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
+    const ac=nativeApp()?.getCatalogBadgeByKey?.(String(a.badge_key));
+    const bc=nativeApp()?.getCatalogBadgeByKey?.(String(b.badge_key));
+    const ar=String(ac?.rarity||a.rarity||'common').toLowerCase();
+    const br=String(bc?.rarity||b.rarity||'common').toLowerCase();
+    const rarityDiff=RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
+    if(rarityDiff!==0)return rarityDiff;
+    const scoreDiff=(Number(bc?.points??b.points)||0)-(Number(ac?.points??a.points)||0);
+    if(scoreDiff!==0)return scoreDiff;
+    return String(ac?.name||a.badge_name||a.badge_key).localeCompare(String(bc?.name||b.badge_name||b.badge_key));
   });
 
   if(!discovered.length){
@@ -1612,17 +1633,31 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
     return;
   }
 
-  for(const saved of discovered){
+  discovered.forEach((saved,index)=>{
     const key=String(saved.badge_key);
     const catalog=nativeApp()?.getCatalogBadgeByKey?.(key);
     const rarity=String(catalog?.rarity||saved.rarity||'common').toLowerCase();
+
+    const item=document.createElement('span');
+    item.className='profile-first-discovery-item';
+
     const button=document.createElement('button');
     button.type='button';
     button.className='profile-first-discovery-link rarity-text-'+rarity;
     button.textContent=catalog?.name||saved.badge_name||'Badge';
     button.addEventListener('click',()=>nativeApp()?.openBadgeDetailByKey?.(key));
-    list.appendChild(button);
-  }
+    item.appendChild(button);
+
+    if(index<discovered.length-1){
+      const separator=document.createElement('span');
+      separator.className='profile-first-discovery-separator';
+      separator.textContent='*';
+      separator.setAttribute('aria-hidden','true');
+      item.appendChild(separator);
+    }
+
+    list.appendChild(item);
+  });
 }
 
 function mountRollHistoryEntry(ownProfile){
@@ -2146,8 +2181,7 @@ function decorateLeaderboardRoll(root,summary,{winner=false}={}){
     }
   }else{
     rarity.classList.add('leaderboard-roll-rarity-corner');
-    const scoreBlock=card.querySelector('.mock-roll-score-block');
-    (scoreBlock||card).appendChild(rarity);
+    card.appendChild(rarity);
   }
 
   return root;
