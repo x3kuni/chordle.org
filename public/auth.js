@@ -29,6 +29,7 @@ const state = {
   leaderboardTodayRolls: [],
   leaderboardTodayProfiles: new Map(),
   anonymousPromptedDay: null,
+  externalReplay: null,
   dayKey: localDayKey()
 };
 
@@ -78,6 +79,60 @@ style.textContent=`
 .ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
 .leaderboard-winner-card .mock-roll-score-block{min-height:96px;padding-bottom:8px}
 .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px);line-height:.96;padding:0 6px 8px}
+.profile-best-wrap .mock-roll-percentile{font-size:12px;line-height:1.15;margin-top:8px}
+.badge-detail-profile-link{border-bottom-color:transparent!important;text-decoration:none!important}
+.badge-detail-profile-link:hover{border-bottom-color:currentColor!important;text-decoration:none!important}
+.roll-detail-badge.badge.common:hover .roll-detail-badge-name,
+.roll-detail-badge.badge.uncommon:hover .roll-detail-badge-name,
+.roll-detail-badge.badge.rare:hover .roll-detail-badge-name,
+.roll-detail-badge.badge.epic:hover .roll-detail-badge-name{
+  text-decoration:underline!important;
+  text-decoration-thickness:1px!important;
+  text-underline-offset:3px!important;
+}
+.leaderboard-mini-piano .leaderboard-static-key{pointer-events:none}
+.leaderboard-mini-piano .leaderboard-static-key.rolled{transform:translateY(-1px)}
+.leaderboard-mini-piano .leaderboard-static-key.common{background:var(--common)}
+.leaderboard-mini-piano .leaderboard-static-key.uncommon{background:var(--uncommon)}
+.leaderboard-mini-piano .leaderboard-static-key.rare{background:var(--rare)}
+.leaderboard-mini-piano .leaderboard-static-key.epic{background:var(--epic)}
+.leaderboard-mini-piano .leaderboard-static-key.legendary{background:var(--legendary)}
+.leaderboard-mini-piano .leaderboard-static-key.mythic{background:var(--mythic)}
+.leaderboard-mini-piano .leaderboard-static-key.ultra{background:var(--ultra)}
+.leaderboard-mini-piano .leaderboard-static-key.godly{background:var(--godly);box-shadow:0 0 22px rgba(255,255,255,.5)}
+.leaderboard-mini-piano .white-key.leaderboard-static-key.godly{
+  background:linear-gradient(180deg,#ffffff 0%,#f8f8f8 38%,#d7d9dd 72%,#aeb2b9 100%);
+  border-color:#c7c9ce;
+  box-shadow:0 0 22px rgba(255,255,255,.52),inset 0 -10px 15px rgba(70,74,82,.14);
+}
+.leaderboard-mini-piano .leaderboard-static-key.supreme{background:linear-gradient(180deg,#ff5454 0%,#ffd84d 22%,#62d58b 43%,#5ea7ff 64%,#aa79ff 82%,#ff72c6 100%)}
+.leaderboard-mini-piano .leaderboard-static-key.omnipotent{background:#050505;border-color:#7f838a;box-shadow:0 0 18px rgba(255,255,255,.16)}
+.leaderboard-mini-piano .black-key.leaderboard-static-key.omnipotent{
+  background:linear-gradient(180deg,#5f6269 0%,#34363b 28%,#111216 68%,#030304 100%);
+  border-color:#969aa2;
+  box-shadow:0 7px 10px rgba(0,0,0,.42),0 0 18px rgba(255,255,255,.20),inset 0 1px 2px rgba(255,255,255,.20);
+}
+.leaderboard-mini-piano .leaderboard-static-key.eternal{background:linear-gradient(180deg,#d97932 0%,#17181b 52%,#f3f3f4 100%);border-color:#e6c5ad;box-shadow:0 0 16px rgba(217,121,50,.30),0 0 24px rgba(255,255,255,.18)}
+.leaderboard-mini-piano .leaderboard-static-key.absolute{background:linear-gradient(180deg,#160b25 0%,#3b1268 38%,#0b0710 100%);border-color:#9a65db;box-shadow:0 0 22px rgba(136,62,214,.48),inset 0 0 12px rgba(255,255,255,.06)}
+.roll-detail-actions{display:flex;align-items:center;gap:7px;margin-left:auto}
+.roll-detail-replay{flex:0 0 auto;min-width:118px;padding:6px 10px;border-radius:7px;font-size:10px;font-weight:760}
+.chordle-replay-panel{
+  position:absolute;z-index:20;left:14px;top:12px;max-width:min(72vw,390px);
+  padding:8px 12px;border:1px solid rgba(255,89,112,.9);border-radius:8px;
+  background:rgba(156,18,39,.86);color:#fff;font-size:12px;font-weight:900;
+  letter-spacing:.055em;text-transform:none;pointer-events:none;
+  box-shadow:0 0 22px rgba(255,48,84,.38);
+  animation:chordleReplayPanelPulse 1.25s ease-in-out infinite;
+}
+@keyframes chordleReplayPanelPulse{
+  0%,100%{opacity:0}
+  50%{opacity:1}
+}
+html.chordle-external-replay #revealBtn,
+html.chordle-external-replay #rerollBtn,
+html.chordle-external-replay #shareChordBtn{display:none!important}
+html.chordle-external-replay #badges .badge-new-tag,
+html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!important}
 .leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px);line-height:.96}
 .profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
 .chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
@@ -217,6 +272,7 @@ async function copyPlainText(text){
 }
 
 function currentShareText(){
+  if(state.externalReplay)return '';
   const next=document.getElementById('nextChord');
   const notes=currentDailyNotes();
   const score=Math.max(0,Math.round(numericText(document.getElementById('score'))));
@@ -234,7 +290,7 @@ function currentShareText(){
   const rarityPrefix=rarityAtLeast(rarity,'legendary')?'## ':'';
   const lines=[
     `**${chordName}**`,
-    `**${notes.map(noteName).join(' - ')}**`,
+    `**${[...notes].sort((a,b)=>a-b).map(noteName).join(' - ')}**`,
     `${rarityPrefix}**${rarityEmoji(rarity)} ${rarityLabel}**`
   ];
   if(percentile)lines.push(`**${percentile}**`);
@@ -244,6 +300,21 @@ function currentShareText(){
     lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
   });
   return lines.join('\n');
+}
+
+function ensureNewTag(card,show){
+  const line=card?.querySelector?.('.badge-name-line');
+  if(!line)return;
+  let tag=line.querySelector('.badge-new-tag');
+  if(!show){tag?.remove();return;}
+  if(!tag){
+    tag=document.createElement('span');
+    tag.className='badge-new-tag';
+    tag.textContent='New';
+    const first=line.querySelector('.badge-first-discovery-tag');
+    if(first)line.insertBefore(tag,first);
+    else line.appendChild(tag);
+  }
 }
 
 function ensureFirstDiscoveryTag(card,show){
@@ -264,11 +335,27 @@ function ensureFirstDiscoveryTag(card,show){
   card.dataset.firstDiscovery='true';
 }
 
+function discoveredOnCurrentLocalDay(value){
+  if(!value)return false;
+  const d=new Date(value);
+  return !Number.isNaN(d.getTime())&&localDayKey(d)===state.dayKey;
+}
+
 let firstDiscoveryTimer=0;
 async function syncFirstDiscoveryTags({allowProvisional=true,all=false}={}){
+  const cards=[...document.querySelectorAll('#badges .badge[data-badge-key]')];
+  if(!cards.length)return;
+
+  if(state.externalReplay){
+    for(const card of cards){
+      ensureNewTag(card,false);
+      ensureFirstDiscoveryTag(card,false);
+    }
+    return;
+  }
+
   const uid=state.session?.user?.id;
   if(!uid)return;
-  const cards=[...document.querySelectorAll('#badges .badge[data-badge-key]')];
   const candidates=all
     ? cards
     : cards.filter(card=>card.querySelector('.badge-new-tag')||card.dataset.firstDiscovery==='true');
@@ -276,23 +363,51 @@ async function syncFirstDiscoveryTags({allowProvisional=true,all=false}={}){
 
   const keys=[...new Set(candidates.map(card=>String(card.dataset.badgeKey||'')).filter(Boolean))];
   if(!keys.length)return;
-  const {data,error}=await supabase.from('chordle_user_badges')
+
+  const {data:owned,error:ownedError}=await supabase.from('chordle_user_badges')
     .select('user_id,badge_key,discovered_at')
-    .in('badge_key',keys)
+    .eq('user_id',uid)
+    .in('badge_key',keys);
+  if(ownedError){
+    console.warn('Chordle daily badge check:',ownedError.message);
+    return;
+  }
+
+  const ownedByKey=new Map((owned||[]).map(row=>[String(row.badge_key),row]));
+  const keysNeedingFirstCheck=new Set();
+
+  for(const card of candidates){
+    const key=String(card.dataset.badgeKey||'');
+    const row=ownedByKey.get(key);
+    const nativeNew=!!card.querySelector('.badge-new-tag');
+    const isNewToday=!!row&&discoveredOnCurrentLocalDay(row.discovered_at);
+    const provisional=allowProvisional&&!row&&nativeNew;
+
+    ensureNewTag(card,isNewToday||provisional);
+    if(isNewToday||provisional)keysNeedingFirstCheck.add(key);
+    else ensureFirstDiscoveryTag(card,false);
+  }
+
+  if(!keysNeedingFirstCheck.size)return;
+  const firstKeys=[...keysNeedingFirstCheck];
+  const {data:owners,error:firstError}=await supabase.from('chordle_user_badges')
+    .select('user_id,badge_key,discovered_at')
+    .in('badge_key',firstKeys)
     .order('discovered_at',{ascending:true});
-  if(error){
-    console.warn('Chordle first discovery check:',error.message);
+  if(firstError){
+    console.warn('Chordle first discovery check:',firstError.message);
     return;
   }
 
   const firstByKey=new Map();
-  for(const row of (data||[])){
+  for(const row of (owners||[])){
     const key=String(row.badge_key||'');
     if(key&&!firstByKey.has(key))firstByKey.set(key,row);
   }
 
   for(const card of candidates){
     const key=String(card.dataset.badgeKey||'');
+    if(!keysNeedingFirstCheck.has(key))continue;
     const first=firstByKey.get(key);
     const provisional=allowProvisional&&!first&&!!card.querySelector('.badge-new-tag');
     ensureFirstDiscoveryTag(card,first?.user_id===uid||provisional);
@@ -310,7 +425,7 @@ function wireFirstDiscoveryBadges(){
   const observer=new MutationObserver(records=>{
     if(records.some(record=>record.addedNodes.length))scheduleFirstDiscoverySync({allowProvisional:true,all:false});
   });
-  observer.observe(badges,{childList:true});
+  observer.observe(badges,{childList:true,subtree:true});
   scheduleFirstDiscoverySync({allowProvisional:false,all:true});
 }
 
@@ -741,7 +856,7 @@ async function persistPendingAnonymousRoll(){
 }
 
 async function persistCompletedRoll(){
-  if(state.restoring||state.persisting||!state.session?.user)return;
+  if(state.externalReplay||state.restoring||state.persisting||!state.session?.user)return;
   const next=document.getElementById('nextChord');
   if(!next?.classList.contains('visible'))return;
   const notes=currentDailyNotes();
@@ -864,7 +979,7 @@ function mountAccountControls(){
   syncAnonymousAccountAttention();
 }
 
-function renderBestRoll(best){
+function renderBestRoll(best,targetProfile=null){
   const el=document.getElementById('profileBestRoll');
   if(!el)return;
   el.replaceChildren();
@@ -875,6 +990,7 @@ function renderBestRoll(best){
   const summary=rollSummary(best);
   const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
   if(card){
+    addReplayRollButton(card,summary,targetProfile||{id:best.user_id,username:'Player'});
     el.appendChild(card);
     nativeApp()?.queueMockScoreFit?.(el);
   }else{
@@ -960,7 +1076,7 @@ async function renderProfile(){
     if(joinEl)joinEl.textContent=state.session?.user?'Profile unavailable':'Log in or create an account to view your profile';
     if(lifetimeEl)lifetimeEl.textContent='—';
     bindProfileColorControl(null,false);
-    renderBestRoll(null);
+    renderBestRoll(null,null);
     renderTopBadges([]);
     mountAccountControls();
     return;
@@ -979,9 +1095,81 @@ async function renderProfile(){
     supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
     supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false}).limit(10)
   ]);
-  renderBestRoll(best||null);
+  renderBestRoll(best||null,target);
   renderTopBadges(badges||[]);
   mountAccountControls();
+}
+
+function mountReplayPanel(profileName){
+  const banner=document.querySelector('.piano-banner');
+  if(!banner)return;
+  let panel=document.getElementById('chordleReplayPanel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='chordleReplayPanel';
+    panel.className='chordle-replay-panel';
+    banner.appendChild(panel);
+  }
+  panel.textContent=`${profileName||'Player'}'s chord replay`;
+}
+
+function clearReplayPanel(){
+  document.getElementById('chordleReplayPanel')?.remove();
+}
+
+function isMainHash(){
+  const hash=location.hash||'#home';
+  return hash==='#home'||hash===''||hash==='#';
+}
+
+async function startOtherRollReplay(profile,summary){
+  if(!summary||!Array.isArray(summary.notes)||summary.notes.length!==6)return;
+  nativeApp()?.stopAllAudio?.();
+
+  state.externalReplay={
+    userId:profile?.id||null,
+    username:profile?.username||'Player',
+    summary
+  };
+  document.documentElement.classList.add('chordle-external-replay');
+  mountReplayPanel(state.externalReplay.username);
+  syncShareButton();
+
+  if(!isMainHash()){
+    location.hash='#home';
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  }
+
+  window.scrollTo({top:0,left:0,behavior:'auto'});
+  await nativeApp()?.startExternalReplay?.(summary);
+  syncShareButton();
+}
+
+function addReplayRollButton(root,summary,profile){
+  const card=root?.classList?.contains('mock-roll-card')?root:root?.querySelector?.('.mock-roll-card');
+  const head=card?.querySelector?.('.roll-detail-head');
+  const play=head?.querySelector?.('.roll-detail-play');
+  if(!card||!head||!play||head.querySelector('.roll-detail-replay'))return card;
+
+  let actions=head.querySelector('.roll-detail-actions');
+  if(!actions){
+    actions=document.createElement('div');
+    actions.className='roll-detail-actions';
+    head.appendChild(actions);
+    actions.appendChild(play);
+  }
+
+  const replay=document.createElement('button');
+  replay.type='button';
+  replay.className='roll-detail-replay';
+  replay.textContent='↻ Replay chord roll';
+  replay.addEventListener('click',event=>{
+    event.preventDefault();
+    event.stopPropagation();
+    void startOtherRollReplay(profile,summary);
+  });
+  actions.insertBefore(replay,play);
+  return card;
 }
 
 function makeLeaderboardRow(rank,name,value,nameColor,href=null){
@@ -1004,7 +1192,10 @@ async function profileMapFor(ids){
 function renderedLeaderboardRow(profile,rank,summary){
   const account={id:profile.id,name:profile.username||'Player'};
   const row=nativeApp()?.createLeaderboardRow?.(account,rank,summary);
-  if(row)patchRenderedProfileLink(row,profile);
+  if(row){
+    patchRenderedProfileLink(row,profile);
+    addReplayRollButton(row,summary,profile);
+  }
   return row;
 }
 
@@ -1064,6 +1255,7 @@ function renderStableWinner(todayRolls,todayProfiles){
         if(existingPiano)existingPiano.replaceWith(exactPiano);
         else card.prepend(exactPiano);
       }
+      addReplayRollButton(card,summary,profile);
     }
     const by=document.createElement('div');
     by.className='leaderboard-winner-by';
@@ -1349,7 +1541,7 @@ function showSignup(existingOverlay=null){
 }
 
 function showAnonymousSavePrompt(){
-  if(state.session?.user)return;
+  if(state.externalReplay||state.session?.user)return;
   highlightProfileLogin();
   const pending=captureAnonymousRoll();
   if(!pending)return;
@@ -1422,6 +1614,7 @@ function wireNavigation(){
   },true);
 
   window.addEventListener('hashchange',()=>{
+    if(!isMainHash())nativeApp()?.stopAllAudio?.();
     setTimeout(()=>{
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
@@ -1437,7 +1630,7 @@ function wireRollCompletion(){
   if(next){
     const observer=new MutationObserver(()=>{
       syncShareButton();
-      if(!next.classList.contains("visible")||state.restoring)return;
+      if(!next.classList.contains("visible")||state.restoring||state.externalReplay)return;
       if(state.session?.user)setTimeout(persistCompletedRoll,0);
       else setTimeout(showAnonymousSavePrompt,180);
     });
@@ -1514,4 +1707,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay};
