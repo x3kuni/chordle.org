@@ -66,7 +66,7 @@ export default {
     );
     html = html.replace(
       "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});",
-      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{timeZone:CHORDLE_PACIFIC_TIME_ZONE,weekday:'long',year:'numeric',month:'long',day:'numeric'});"
+      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{timeZone:'America/Los_Angeles',weekday:'long',year:'numeric',month:'long',day:'numeric'});"
     );
     html = html.replace(
       "    const next=new Date(now); next.setHours(24,0,0,0);",
