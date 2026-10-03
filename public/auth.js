@@ -28,6 +28,8 @@ const state = {
   leaderboardWinnerKey: null,
   leaderboardTodayRolls: [],
   leaderboardTodayProfiles: new Map(),
+  rollHistoryRenderSeq: 0,
+  profileLikeRenderSeq: 0,
   anonymousPromptedDay: null,
   externalReplay: null,
   replayLoadSeq: 0,
@@ -61,8 +63,9 @@ style.textContent=`
 #chordle-profile-auth-slot{margin:24px 0 0;padding:14px 16px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045)}
 #chordle-profile-auth-slot *,.ca-overlay *{box-sizing:border-box}
 .ca-account-title{margin:0 0 9px;color:#8d929c;font-size:10px;font-weight:760;letter-spacing:.14em;text-transform:uppercase}
-.ca-account-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.ca-account-user{margin-right:auto;font-size:13px;font-weight:750}
+.ca-account-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:38px}
+.ca-account-user{margin-right:auto;font-size:15px;font-weight:780;line-height:1.25}
+.ca-account-row .ca-btn{align-self:center;margin-top:0;margin-bottom:0}
 .ca-btn{appearance:none;border:1px solid rgba(255,255,255,.17);background:rgba(255,255,255,.07);color:inherit;padding:9px 13px;font:700 12px/1 inherit;cursor:pointer}
 .ca-btn:hover{background:rgba(255,255,255,.13)}
 .ca-primary{background:#f3f3f3;color:#111;border-color:#f3f3f3}
@@ -83,7 +86,53 @@ style.textContent=`
 .ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
 .leaderboard-winner-card .mock-roll-score-block{min-height:96px;padding-bottom:8px}
 .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px);line-height:.96;padding:0 6px 8px}
-.profile-best-wrap .mock-roll-percentile{font-size:12px;line-height:1.15;margin-top:8px}
+.profile-best-wrap .mock-roll-percentile,
+.leaderboard-row-card .mock-roll-percentile,
+.roll-history-item .mock-roll-percentile{
+  font-size:12px;line-height:1.15;margin-top:9px!important;padding-top:3px;
+  min-height:18px;display:flex;align-items:center;
+}
+.mock-profile-link{
+  max-width:100%;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;
+}
+.chordle-roll-history-entry{
+  width:100%;margin:24px 0 0;padding:16px 18px;border:1px solid rgba(255,255,255,.13);
+  border-radius:11px;background:rgba(255,255,255,.045);color:#f2f3f6;
+  font:850 14px/1.2 inherit;text-align:center;cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .15s ease;
+}
+.chordle-roll-history-entry:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);transform:translateY(-1px)}
+.chordle-roll-history-page{
+  display:none;width:min(980px,94vw);margin:0 auto;min-height:calc(100vh - 210px);padding:48px 0 90px;
+}
+html.chordle-roll-history-route .chordle-roll-history-page{display:block}
+html.chordle-roll-history-route .piano-banner,
+html.chordle-roll-history-route .game-camera,
+html.chordle-roll-history-route .settings-page,
+html.chordle-roll-history-route .badges-index-page,
+html.chordle-roll-history-route .badge-detail-page,
+html.chordle-roll-history-route .leaderboard-page,
+html.chordle-roll-history-route .profile-page,
+html.chordle-roll-history-route .admin-luck{display:none!important}
+.roll-history-title{margin:0 0 38px;text-align:center;font-size:clamp(34px,6vw,52px);font-weight:900;letter-spacing:-.025em}
+.roll-history-list{display:grid;gap:24px}
+.roll-history-item{display:grid;gap:10px}
+.roll-history-date{
+  padding:0 3px;color:#aeb3bd;font-size:12px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;
+}
+.roll-history-item .mock-roll-card{width:100%}
+.roll-history-item .mock-roll-score-block .score{font-size:clamp(48px,6vw,76px);line-height:.96}
+.profile-like-control{
+  display:flex;align-items:center;gap:5px;margin-left:10px;flex:0 0 auto;
+}
+.profile-like-control[hidden]{display:none!important}
+.profile-like-heart{
+  appearance:none;border:0;background:transparent;color:#a8adb6;padding:2px 3px;cursor:pointer;
+  font:900 31px/1 Georgia,"Times New Roman",serif;transition:color .14s ease,transform .14s ease,filter .14s ease;
+}
+.profile-like-heart:hover{color:#ff6978;transform:scale(1.08)}
+.profile-like-heart.is-liked{color:#ff455c;filter:drop-shadow(0 0 7px rgba(255,69,92,.30))}
+.profile-like-heart:disabled{cursor:default;opacity:.72}
+.profile-like-count{min-width:18px;color:#b7bbc3;font-size:12px;font-weight:850;font-variant-numeric:tabular-nums}
 .badge-detail-profile-link{border-bottom-color:transparent!important;text-decoration:none!important}
 .badge-detail-profile-link:hover{border-bottom-color:currentColor!important;text-decoration:none!important}
 .roll-detail-badge.badge.common:hover .roll-detail-badge-name,
@@ -530,8 +579,21 @@ function makeProfileLink(profile,extraClass='mock-profile-link'){
   a.className=extraClass;
   a.href=profileHref(profile);
   a.textContent=profile?.username||'Player';
+  a.title=profile?.username||'Player';
   applyNameColor(a,profile?.name_color,profile?.id);
+  requestAnimationFrame(()=>fitProfileName(a));
   return a;
+}
+
+function fitProfileName(el){
+  if(!el||!el.isConnected||el.clientWidth<=0)return;
+  el.style.removeProperty('font-size');
+  const base=parseFloat(getComputedStyle(el).fontSize)||16;
+  let size=base;
+  while(el.scrollWidth>el.clientWidth&&size>10.5){
+    size-=0.5;
+    el.style.fontSize=size.toFixed(1)+'px';
+  }
 }
 function profileTargetFromHash(){
   const hash=location.hash||'';
@@ -568,7 +630,9 @@ function patchRenderedProfileLink(root,profile){
   if(!a||!profile)return;
   a.href=profileHref(profile);
   a.textContent=profile.username||'Player';
+  a.title=profile.username||'Player';
   applyNameColor(a,profile.name_color,profile.id);
+  requestAnimationFrame(()=>fitProfileName(a));
 }
 
 
@@ -1107,6 +1171,178 @@ function renderTopBadges(rows){
   nativeApp()?.queueCompactBadgeTitleFit?.(el);
 }
 
+function mountRollHistoryEntry(ownProfile){
+  const page=document.getElementById('profilePage');
+  const badgesPanel=page?.querySelector('.profile-badges-panel');
+  if(!page||!badgesPanel)return null;
+  let button=document.getElementById('chordleRollHistoryEntry');
+  if(!ownProfile){
+    button?.remove();
+    return null;
+  }
+  if(!button){
+    button=document.createElement('button');
+    button.id='chordleRollHistoryEntry';
+    button.type='button';
+    button.className='chordle-roll-history-entry';
+    button.textContent='View Roll History';
+    button.addEventListener('click',()=>{location.hash='#roll-history';});
+  }
+  badgesPanel.insertAdjacentElement('afterend',button);
+  return button;
+}
+
+function mountRollHistoryPage(){
+  let page=document.getElementById('chordleRollHistoryPage');
+  if(page)return page;
+  page=document.createElement('main');
+  page.id='chordleRollHistoryPage';
+  page.className='chordle-roll-history-page';
+  page.innerHTML='<h1 class="roll-history-title">Roll History</h1><div class="roll-history-list" id="rollHistoryList"></div>';
+  document.body.insertBefore(page,document.getElementById('chordleFooter')||null);
+  return page;
+}
+
+function formatRollHistoryDate(day){
+  const raw=String(day||'');
+  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const date=match?new Date(Number(match[1]),Number(match[2])-1,Number(match[3])):new Date(raw);
+  if(Number.isNaN(date.getTime()))return raw||'Unknown date';
+  return date.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
+
+async function renderRollHistoryRoute(){
+  const active=location.hash==='#roll-history';
+  document.documentElement.classList.toggle('chordle-roll-history-route',active);
+  if(!active)return false;
+
+  const page=mountRollHistoryPage();
+  const list=page.querySelector('#rollHistoryList');
+  const seq=++state.rollHistoryRenderSeq;
+  if(!list)return true;
+
+  if(!state.session?.user){
+    list.innerHTML='<div class="profile-badges-empty">Sign in to view your roll history.</div>';
+    return true;
+  }
+
+  const hadExisting=list.children.length>0;
+  const [{data:rolls,error},profile]=await Promise.all([
+    supabase.from('chordle_rolls').select('*').eq('user_id',state.session.user.id)
+      .order('roll_day',{ascending:false}).order('created_at',{ascending:false}),
+    state.profile?.id===state.session.user.id?Promise.resolve(state.profile):fetchProfileTarget(state.session.user.id)
+  ]);
+  if(seq!==state.rollHistoryRenderSeq||location.hash!=='#roll-history')return true;
+  if(error){
+    console.warn('Chordle roll history:',error.message);
+    if(!hadExisting)list.innerHTML='<div class="profile-badges-empty">Could not load roll history.</div>';
+    return true;
+  }
+
+  const fragment=document.createDocumentFragment();
+  for(const roll of (rolls||[])){
+    const item=document.createElement('section');
+    item.className='roll-history-item';
+
+    const date=document.createElement('div');
+    date.className='roll-history-date';
+    date.textContent=formatRollHistoryDate(roll.roll_day);
+    item.appendChild(date);
+
+    const summary=rollSummary(roll);
+    const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
+    if(card){
+      addReplayRollButton(card,summary,profile||{id:roll.user_id,username:'Player'},roll.id);
+      item.appendChild(card);
+    }
+    fragment.appendChild(item);
+  }
+
+  if(!(rolls||[]).length){
+    const empty=document.createElement('div');
+    empty.className='profile-badges-empty';
+    empty.textContent='No completed rolls yet.';
+    fragment.appendChild(empty);
+  }
+  list.replaceChildren(fragment);
+  nativeApp()?.queueMockScoreFit?.(page);
+  window.scrollTo({top:0,left:0,behavior:'auto'});
+  return true;
+}
+
+function mountProfileLikeControl(){
+  const colorControl=document.getElementById('profileColorControl');
+  if(!colorControl?.parentElement)return null;
+  let control=document.getElementById('profileLikeControl');
+  if(!control){
+    control=document.createElement('div');
+    control.id='profileLikeControl';
+    control.className='profile-like-control';
+    control.hidden=true;
+    control.innerHTML='<button type="button" class="profile-like-heart" aria-label="Like profile" title="Like profile">♡</button><span class="profile-like-count">0</span>';
+    colorControl.insertAdjacentElement('afterend',control);
+  }
+  return control;
+}
+
+async function renderProfileLikeControl(targetProfile,ownProfile){
+  const control=mountProfileLikeControl();
+  if(!control)return;
+  const seq=++state.profileLikeRenderSeq;
+  const button=control.querySelector('.profile-like-heart');
+  const countEl=control.querySelector('.profile-like-count');
+
+  control.hidden=!targetProfile||ownProfile;
+  if(control.hidden)return;
+
+  const uid=state.session?.user?.id||null;
+  const countPromise=supabase.from('chordle_profile_likes').select('*',{count:'exact',head:true}).eq('profile_id',targetProfile.id);
+  const likedPromise=uid
+    ?supabase.from('chordle_profile_likes').select('profile_id').eq('profile_id',targetProfile.id).eq('liker_id',uid).maybeSingle()
+    :Promise.resolve({data:null,error:null});
+  const [countResult,likedResult]=await Promise.all([countPromise,likedPromise]);
+  if(seq!==state.profileLikeRenderSeq||control.hidden)return;
+  if(countResult.error)console.warn('Chordle profile likes count:',countResult.error.message);
+  if(likedResult.error)console.warn('Chordle profile like state:',likedResult.error.message);
+
+  let count=Math.max(0,Number(countResult.count)||0);
+  let liked=!!likedResult.data;
+  const paint=()=>{
+    button.textContent=liked?'♥':'♡';
+    button.classList.toggle('is-liked',liked);
+    button.setAttribute('aria-label',liked?'Unlike profile':'Like profile');
+    button.title=liked?'Unlike profile':'Like profile';
+    countEl.textContent=String(count);
+  };
+  paint();
+
+  button.onclick=async()=>{
+    if(!state.session?.user){showLogin();return;}
+    if(state.session.user.id===targetProfile.id)return;
+    button.disabled=true;
+    try{
+      if(liked){
+        const {error}=await supabase.from('chordle_profile_likes').delete()
+          .eq('profile_id',targetProfile.id).eq('liker_id',state.session.user.id);
+        if(error)throw error;
+        liked=false;count=Math.max(0,count-1);
+      }else{
+        const {error}=await supabase.from('chordle_profile_likes').insert({
+          profile_id:targetProfile.id,
+          liker_id:state.session.user.id
+        });
+        if(error)throw error;
+        liked=true;count+=1;
+      }
+      paint();
+    }catch(error){
+      console.warn('Chordle profile like:',error?.message||error);
+    }finally{
+      button.disabled=false;
+    }
+  };
+}
+
 function bindProfileColorControl(targetProfile,ownProfile){
   const control=document.getElementById('profileColorControl');
   const button=document.getElementById('profileColorButton');
@@ -1162,6 +1398,8 @@ async function renderProfile(){
     if(joinEl)joinEl.textContent=state.session?.user?'Profile unavailable':'Log in or create an account to view your profile';
     if(lifetimeEl)lifetimeEl.textContent='—';
     bindProfileColorControl(null,false);
+    mountRollHistoryEntry(false);
+    void renderProfileLikeControl(null,false);
     renderBestRoll(null,null);
     renderTopBadges([]);
     mountAccountControls();
@@ -1176,6 +1414,8 @@ async function renderProfile(){
   }
   if(lifetimeEl)lifetimeEl.textContent=formatScore(target.lifetime_score);
   bindProfileColorControl(target,ownProfile);
+  mountRollHistoryEntry(ownProfile);
+  void renderProfileLikeControl(target,ownProfile);
 
   const [{data:best},{data:badges}]=await Promise.all([
     supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
@@ -1504,9 +1744,16 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
   const titleEl=document.getElementById('leaderboardTitle');
   if(!list)return;
 
-  // Only the ranking list is replaced on tab changes. The #1 Today showcase
-  // stays mounted so it no longer flashes away and rebuilds every click.
-  list.replaceChildren();
+  // Keep the current rows visible while fresh data is fetched. The replacement
+  // is built off-DOM and swapped in only when the whole ranking is ready.
+  const nextList=document.createDocumentFragment();
+  let nextCount=0;
+  const appendRow=row=>{
+    if(!row)return;
+    nextList.appendChild(row);
+    nextCount++;
+  };
+
   if(titleEl)titleEl.textContent="Today's Leaderboard";
   if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
@@ -1524,10 +1771,8 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
 
   if(state.leaderboardTab==='today'){
     todayRolls.slice(1).forEach((roll,index)=>{
-      if(seq!==state.leaderboardRenderSeq)return;
       const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll),roll);
-      if(row)list.appendChild(row);
+      appendRow(renderedLeaderboardRow(profile,index+2,rollSummary(roll),roll));
     });
   }else if(state.leaderboardTab==='alltime'){
     const rolls=await bestRollsByUser(true);
@@ -1536,8 +1781,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     if(seq!==state.leaderboardRenderSeq)return;
     rolls.forEach((roll,index)=>{
       const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll),roll);
-      if(row)list.appendChild(row);
+      appendRow(renderedLeaderboardRow(profile,index+1,rollSummary(roll),roll));
     });
   }else if(state.leaderboardTab==='lifetime'){
     const {data,error}=await supabase.from('profiles')
@@ -1547,8 +1791,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     if(seq!==state.leaderboardRenderSeq)return;
     if(error)console.warn('Chordle lifetime leaderboard:',error.message);
     (data||[]).forEach((profile,index)=>{
-      const row=renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)+' lifetime');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)));
     });
   }else if(state.leaderboardTab==='badges'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
@@ -1561,8 +1804,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
-      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges'));
     });
   }else if(state.leaderboardTab==='discovered'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
@@ -1577,15 +1819,18 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
-      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered');
-      if(row)list.appendChild(row);
+      appendRow(renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered'));
     });
   }
 
   if(seq!==state.leaderboardRenderSeq)return;
-  if(!list.children.length){
-    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  if(!nextCount){
+    const empty=document.createElement('div');
+    empty.className='profile-badges-empty';
+    empty.textContent='No results yet.';
+    nextList.appendChild(empty);
   }
+  list.replaceChildren(nextList);
 
   document.getElementById('leaderboardTabs')?.querySelectorAll('.leaderboard-tab').forEach(btn=>{
     const active=btn.dataset.leaderboardTab===state.leaderboardTab;
@@ -1593,6 +1838,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     btn.setAttribute('aria-selected',active?'true':'false');
   });
   nativeApp()?.queueMockScoreFit?.(document);
+  requestAnimationFrame(()=>document.querySelectorAll('#leaderboardPage .mock-profile-link').forEach(fitProfileName));
 }
 
 async function refreshBadgeExistCounts(){
@@ -1680,7 +1926,7 @@ function loginFormMarkup(){
 }
 
 function signupFormMarkup(){
-  return '<h2>Create account</h2><p class="ca-sub">Create your Chordle account. If you just rolled a chord, it will be saved when you sign in.</p><form><div class="ca-field"><label>Username</label><input name="username" minlength="2" maxlength="24" autocomplete="username" required></div><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Create account</button></div><div class="ca-msg"></div></form>';
+  return '<h2>Create account</h2><p class="ca-sub">Create your Chordle account. If you just rolled a chord, it will be saved when you sign in.</p><form><div class="ca-field"><label>Username</label><input name="username" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" title="3–16 letters, numbers, or underscores" autocomplete="username" required></div><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Create account</button></div><div class="ca-msg"></div></form>';
 }
 
 function showLogin(existingOverlay=null){
@@ -1724,6 +1970,11 @@ function showSignup(existingOverlay=null){
     const submit=f.querySelector('button[type="submit"]');
     if(submit?.disabled)return;
     const fd=new FormData(f),uname=String(fd.get("username")).trim();
+    if(!/^[A-Za-z0-9_]{3,16}$/.test(uname)){
+      msg.textContent="Username must be 3–16 characters using only letters, numbers, or underscores.";
+      if(submit)submit.disabled=false;
+      return;
+    }
     const email=String(fd.get("email")).trim().toLowerCase();
     const previous=readJson(SIGNUP_COOLDOWN_KEY);
     const elapsed=Date.now()-Number(previous?.at||0);
@@ -1912,6 +2163,7 @@ function wireNavigation(){
         return;
       }
 
+      if(await renderRollHistoryRoute())return;
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -1975,6 +2227,7 @@ async function boot(){
   }
 
   if(isReplayHash())await loadReplayFromHash();
+  else if(await renderRollHistoryRoute()){}
   else if(renderInfoRoute()){}
   else if(location.hash.startsWith('#profile'))await renderProfile();
   else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -1988,6 +2241,7 @@ async function boot(){
       else{state.profile=null;state.todayRoll=null;}
       syncAnonymousAccountAttention();
       if(isReplayHash()){await loadReplayFromHash();return;}
+      if(await renderRollHistoryRoute())return;
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -2006,4 +2260,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,renderRollHistoryRoute,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
