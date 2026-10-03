@@ -216,6 +216,7 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 .leaderboard-row-card .mock-roll-card,
 .leaderboard-row-card.mock-roll-card,
 .chordle-tight-leaderboard-card{
+  position:relative!important;
   padding-top:9px!important;
   padding-bottom:7px!important;
   grid-template-rows:auto!important;
@@ -247,15 +248,68 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   text-align:center!important;
 }
 .leaderboard-roll-rarity{
-  width:100%;
-  margin:0 0 2px;
-  text-align:center;
   font-size:10px;
   line-height:1;
   font-weight:900;
   letter-spacing:.14em;
   text-transform:uppercase;
-  opacity:.82;
+  white-space:nowrap;
+}
+.leaderboard-roll-rarity-corner{
+  position:absolute;
+  top:10px;
+  right:14px;
+  z-index:4;
+  width:auto;
+  margin:0;
+  text-align:right;
+}
+.leaderboard-winner-meta-row{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:18px!important;
+  width:100%!important;
+  margin-top:7px!important;
+}
+.leaderboard-winner-meta-row .mock-roll-percentile{
+  margin:0!important;
+  padding:0!important;
+  min-height:0!important;
+  width:auto!important;
+}
+.leaderboard-winner-meta-row .leaderboard-roll-rarity{
+  position:static!important;
+  width:auto!important;
+  margin:0!important;
+  text-align:left!important;
+}
+.rarity-text-common{color:#d7d9de}
+.rarity-text-uncommon{color:#62d58b}
+.rarity-text-rare{color:#5ea7ff}
+.rarity-text-epic{color:#aa79ff}
+.rarity-text-legendary{color:#ffd84d}
+.rarity-text-mythic{color:#ff4d63}
+.rarity-text-ultra{color:#ff72c6}
+.rarity-text-godly{
+  background:linear-gradient(90deg,#ffffff,#bfc5cf,#ffffff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.rarity-text-supreme{
+  background:linear-gradient(90deg,#ff6464,#ffd84d,#62d58b,#5ea7ff,#aa79ff,#ff72c6);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.rarity-text-omnipotent{
+  background:linear-gradient(90deg,#d9d9de,#737782,#e9e9ed);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.rarity-text-eternal{
+  background:linear-gradient(90deg,#ff9d42,#ffd07b,#ff7a2f);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.rarity-text-absolute{
+  background:linear-gradient(90deg,#d1a5ff,#8b5ac7,#f0d9ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .leaderboard-row-card .mock-roll-score-block .score,
 .chordle-tight-leaderboard-card .mock-roll-score-block .score{
@@ -1895,23 +1949,42 @@ async function profileMapFor(ids){
   return new Map((data||[]).map(p=>[p.id,p]));
 }
 
-function decorateLeaderboardRoll(root,summary){
+function decorateLeaderboardRoll(root,summary,{winner=false}={}){
   const card=root?.classList?.contains('mock-roll-card')?root:root?.querySelector?.('.mock-roll-card');
   if(!card||!summary)return root;
   card.classList.add('chordle-tight-leaderboard-card');
 
-  const scoreBlock=card.querySelector('.mock-roll-score-block');
-  if(scoreBlock){
-    let rarity=scoreBlock.querySelector('.leaderboard-roll-rarity');
-    if(!rarity){
-      rarity=document.createElement('div');
-      rarity.className='leaderboard-roll-rarity';
-      const scoreEl=scoreBlock.querySelector('.score');
-      if(scoreEl)scoreBlock.insertBefore(rarity,scoreEl);
-      else scoreBlock.prepend(rarity);
+  const rarityId=String(summary.rarity||'common').toLowerCase();
+  card.querySelectorAll('.leaderboard-roll-rarity,.leaderboard-winner-meta-row').forEach(el=>{
+    if(el.classList.contains('leaderboard-winner-meta-row')){
+      const percentile=el.querySelector('.mock-roll-percentile');
+      if(percentile)el.replaceWith(percentile);
+      else el.remove();
+    }else{
+      el.remove();
     }
-    rarity.textContent=titleCaseRarity(summary.rarity||'common');
+  });
+
+  const rarity=document.createElement('div');
+  rarity.className='leaderboard-roll-rarity rarity-text-'+rarityId;
+  rarity.textContent=titleCaseRarity(rarityId);
+
+  if(winner){
+    const percentile=card.querySelector('.mock-roll-percentile');
+    if(percentile){
+      const row=document.createElement('div');
+      row.className='leaderboard-winner-meta-row';
+      percentile.replaceWith(row);
+      row.append(percentile,rarity);
+    }else{
+      card.appendChild(rarity);
+      rarity.classList.add('leaderboard-roll-rarity-corner');
+    }
+  }else{
+    rarity.classList.add('leaderboard-roll-rarity-corner');
+    card.appendChild(rarity);
   }
+
   return root;
 }
 
@@ -2046,7 +2119,7 @@ function renderStableWinner(todayRolls,todayProfiles){
     rank.textContent='#1 Today';
     const card=summary?nativeApp()?.createRollCard?.(summary,{winner:true,showRarity:false}):null;
     if(card&&Array.isArray(winner.notes)){
-      decorateLeaderboardRoll(card,summary);
+      decorateLeaderboardRoll(card,summary,{winner:true});
       const exactPiano=nativeApp()?.createLeaderboardMiniPiano?.(winner.notes.map(Number),summary.rarity);
       const existingPiano=card.querySelector('.leaderboard-mini-piano');
       if(exactPiano){
