@@ -143,10 +143,11 @@ html.chordle-roll-history-route .admin-luck{display:none!important}
 .profile-like-heart.is-liked .profile-like-heart-shape,
 .profile-like-heart.is-count-display .profile-like-heart-shape{fill:currentColor;stroke:currentColor}
 .profile-like-heart:disabled{cursor:default;transform:none}
-.profile-like-count{min-width:18px;color:#b7bbc3;font-size:12px;font-weight:850;font-variant-numeric:tabular-nums}
+.profile-like-count{min-width:20px;color:#b7bbc3;font-size:14px;font-weight:850;line-height:1;font-variant-numeric:tabular-nums}
+#homeLink{margin-right:0!important}
 .chordle-discord-link{
   display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
-  margin-left:8px;color:#aeb4c0;text-decoration:none!important;vertical-align:middle;flex:0 0 auto;
+  margin-left:4px!important;margin-right:auto!important;color:#aeb4c0;text-decoration:none!important;vertical-align:middle;flex:0 0 auto;
   opacity:.9;transition:color .14s ease,opacity .14s ease,transform .14s ease;
 }
 .chordle-discord-link:hover{color:#ffffff;opacity:1;transform:translateY(-1px)}
@@ -204,7 +205,24 @@ html.chordle-external-replay #rerollBtn,
 html.chordle-external-replay #shareChordBtn{display:none!important}
 html.chordle-external-replay #badges .badge-new-tag,
 html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!important}
-.leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px);line-height:.96}
+.leaderboard-row-card .mock-roll-card{
+  min-height:0!important;
+  padding-top:10px!important;
+  padding-bottom:9px!important;
+}
+.leaderboard-row-card .mock-roll-score-block{
+  align-self:stretch!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  padding-top:0!important;
+  padding-bottom:0!important;
+  min-height:0!important;
+}
+.leaderboard-row-card .mock-roll-score-block .score{
+  font-size:clamp(38px,4.5vw,58px);line-height:.96;
+  margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important;
+}
 .profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
 .chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
 .chordle-footer a{color:#747983;text-decoration:none;transition:color .15s ease}
@@ -315,7 +333,7 @@ function chordleHeartSvg(){
 }
 
 function installChordleFavicon(){
-  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="3" y="3" width="58" height="58" rx="14" fill="#111217" stroke="#f3f4f6" stroke-width="3"/><path d="M47 18.5C42.7 13.2 36.5 10.5 29.1 10.5C16.8 10.5 8.5 19.3 8.5 32S16.8 53.5 29.1 53.5C36.6 53.5 42.8 50.7 47.2 45.2L39.5 38.9C36.7 42.1 33.5 43.6 29.6 43.6C22.8 43.6 18.1 39 18.1 32C18.1 25 22.8 20.4 29.6 20.4C33.5 20.4 36.7 21.9 39.5 25.1Z" fill="#f5f6f8"/></svg>';
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="3" y="3" width="58" height="58" rx="14" fill="#111217" stroke="#f3f4f6" stroke-width="3"/><path d="M45 18A19 19 0 1 0 45 46" fill="none" stroke="#f5f6f8" stroke-width="8" stroke-linecap="round"/></svg>';
   let link=document.querySelector('link[data-chordle-favicon]');
   if(!link){
     link=document.createElement('link');
