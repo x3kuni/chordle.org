@@ -73,8 +73,8 @@ export default {
       nextChordEl.classList.add('visible');
       updateNextChordCountdown();
 
-      revealBtn.disabled=true;
-      revealBtn.textContent="Today's chord complete";
+      revealBtn.disabled=false;
+      revealBtn.textContent='Replay chord';
       rerollBtn.disabled=true;
       audioBtn.disabled=false;
       updateAudioButton();
@@ -96,6 +96,25 @@ export default {
   const __legacyRenderMockLeaderboard=renderMockLeaderboard;
   renderMockProfile=(...args)=>window.__CHORDLE_SUPABASE_OWNS_UI__ ? undefined : __legacyRenderMockProfile(...args);
   renderMockLeaderboard=(...args)=>window.__CHORDLE_SUPABASE_OWNS_UI__ ? undefined : __legacyRenderMockLeaderboard(...args);
+
+  async function chordleReplayCompletedRoll(summary){
+    if(!summary || !Array.isArray(summary.notes) || summary.notes.length!==6) return false;
+    try{
+      revealBtn.disabled=true;
+      revealBtn.textContent='Replay chord';
+      await reveal(summary.notes.map(Number),false);
+      revealBtn.disabled=false;
+      revealBtn.textContent='Replay chord';
+      rerollBtn.disabled=true;
+      return true;
+    }catch(error){
+      console.warn('Chordle replay failed:',error);
+      revealBtn.disabled=false;
+      revealBtn.textContent='Replay chord';
+      rerollBtn.disabled=true;
+      return false;
+    }
+  }
 
   window.__CHORDLE_APP__={
     createRollCard:createMockRollCard,
@@ -122,13 +141,14 @@ export default {
       writeSeenBadges();
       if(location.hash==='#badges') renderBadgeIndexPage();
     },
-    restoreCompletedRoll:chordleRestoreCompletedRoll
+    restoreCompletedRoll:chordleRestoreCompletedRoll,
+    replayCompletedRoll:chordleReplayCompletedRoll
   };
   ${simMarker}`;
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=refined-live-ui-2"></script>';
+    const tag = '<script type="module" src="/auth.js?v=leaderboard-pr4-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
