@@ -303,6 +303,7 @@ function currentShareText(){
     const prefix=rarityAtLeast(badge.rarity,'legendary')?'## ':'';
     lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
   });
+  lines.push('', 'https://chordle.org/');
   return lines.join('\n');
 }
 
