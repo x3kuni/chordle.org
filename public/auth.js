@@ -7,11 +7,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
-const state = { session:null, profile:null, leaderboard:[] };
+const DAILY_LOCAL_KEY = "chordle_generated_daily_roll_v1";
+const LIFETIME_LOCAL_KEY = "chord_rng_lifetime_v1";
+const LIFETIME_DAY_KEY = "chord_rng_lifetime_day_v1";
+const SEEN_BADGES_KEY = "chordle_seen_badges_v1";
+
+const state = {
+  session: null,
+  profile: null,
+  todayRoll: null,
+  restoring: false,
+  persisting: false,
+  leaderboardTab: "today",
+  dayKey: localDayKey()
+};
+
+const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
 
 const style=document.createElement("style");
 style.textContent=`
-#chordle-profile-auth-slot{margin:18px 0 2px;padding:14px 16px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045)}
+#chordle-profile-auth-slot{margin:24px 0 0;padding:14px 16px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045)}
 #chordle-profile-auth-slot *,.ca-overlay *{box-sizing:border-box}
 .ca-account-title{margin:0 0 9px;color:#8d929c;font-size:10px;font-weight:760;letter-spacing:.14em;text-transform:uppercase}
 .ca-account-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
@@ -27,15 +42,27 @@ style.textContent=`
 .ca-actions{display:flex;gap:9px;margin-top:18px}.ca-actions .ca-btn{flex:1;padding:12px}
 .ca-msg{min-height:19px;margin-top:12px;font-size:12px;color:#ffb3b3}.ca-msg.ok{color:#a8efbe}
 .ca-x{float:right;background:none;border:0;color:#aaa;font-size:24px;cursor:pointer}
-.ca-profile-empty{padding:17px 0;color:#8d929c;font-size:13px}
+.ca-server-row{display:grid;grid-template-columns:52px minmax(0,1fr) 150px;gap:10px;align-items:center;padding:12px 8px;border-bottom:1px solid rgba(255,255,255,.08)}
+.ca-server-rank{font-weight:850;color:#8d929c;text-align:center}
+.ca-server-user{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ca-server-value{text-align:right;font-weight:850;font-variant-numeric:tabular-nums}
+.ca-best-roll{padding:16px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)}
+.ca-best-roll-name{font-size:18px;font-weight:850}
+.ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
+@media(max-width:620px){.ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}}
 `;
 document.head.appendChild(style);
 
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));}
-function username(user){return state.profile?.username||user?.user_metadata?.username||user?.email?.split("@")[0]||"Player";}
-function score(v){const n=Number(v||0);return Number.isFinite(n)?Math.round(n).toLocaleString():"0";}
-function joined(v){if(!v)return "Joined —";const d=new Date(v);return Number.isNaN(d.getTime())?"Joined —":"Joined "+d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});}
+function localDayKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function noteName(n){return `${NOTE_NAMES_FLAT[((Number(n)%12)+12)%12]}${2+Math.floor(Number(n)/12)}`;}
+function formatScore(v){const n=Number(v||0);return Number.isFinite(n)?Math.round(n).toLocaleString():"0";}
+function username(user=state.session?.user){return state.profile?.username||user?.user_metadata?.username||user?.email?.split("@")[0]||"Player";}
 function color(v){return typeof v==="string"&&CSS.supports("color",v)?v:"";}
+function joined(v){if(!v)return "Joined —";const d=new Date(v);return Number.isNaN(d.getTime())?"Joined —":"Joined "+d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});}
+function readJson(key){try{return JSON.parse(localStorage.getItem(key)||"null");}catch{return null;}}
+function writeJson(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}
+function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0-9.-]/g,""));return Number.isFinite(n)?n:0;}
 
 function modal(inner){
   const o=document.createElement("div");o.className="ca-overlay";
@@ -54,156 +81,415 @@ function unlockExistingPages(){
   }
 }
 
-async function loadProfile(user,retries=0){
+function applyRoute(route){
+  const root=document.documentElement;
+  const profile=route==="profile", leaderboard=route==="leaderboard";
+  root.classList.toggle("settings-route",false);
+  root.classList.toggle("badges-route",false);
+  root.classList.toggle("badge-detail-route",false);
+  root.classList.toggle("profile-route",profile);
+  root.classList.toggle("leaderboard-route",leaderboard);
+  if(profile) history.pushState(null,"","#profile/kii");
+  if(leaderboard) history.pushState(null,"","#leaderboard");
+  window.scrollTo({top:0,left:0,behavior:"auto"});
+}
+
+async function loadProfile(user=state.session?.user,retries=0){
   state.profile=null;
   if(!user)return null;
   for(let i=0;i<=retries;i++){
     const {data,error}=await supabase.from("profiles")
       .select("id,username,name_color,lifetime_score,joined_at")
       .eq("id",user.id).maybeSingle();
-    if(!error&&data){state.profile=data;return data;}
-    if(i<retries)await new Promise(r=>setTimeout(r,300));
+    if(!error&&data){state.profile=data;syncLifetimeDisplay();return data;}
+    if(i<retries)await new Promise(r=>setTimeout(r,250));
   }
   return null;
 }
 
-async function loadLeaderboard(){
-  const {data,error}=await supabase.from("profiles")
-    .select("id,username,name_color,lifetime_score,joined_at")
-    .order("lifetime_score",{ascending:false})
-    .order("joined_at",{ascending:true})
-    .limit(100);
-  if(error)throw error;
-  state.leaderboard=data||[];
-  return state.leaderboard;
+function syncLifetimeDisplay(){
+  if(!state.profile)return;
+  const value=Math.max(0,Number(state.profile.lifetime_score)||0);
+  try{localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(value)));}catch{}
+  const el=document.getElementById("lifetimeScore");
+  if(el){
+    el.textContent="Lifetime score: "+Math.round(value).toLocaleString();
+    el.classList.add("visible");
+  }
+}
+
+async function getTodayRoll(userId=state.session?.user?.id){
+  if(!userId)return null;
+  const {data,error}=await supabase.from("daily_rolls")
+    .select("*").eq("user_id",userId).eq("roll_day",localDayKey()).maybeSingle();
+  if(error){
+    if(String(error.message||"").toLowerCase().includes("daily_rolls")) return null;
+    throw error;
+  }
+  return data||null;
+}
+
+async function getRollBadges(rollId){
+  if(!rollId)return [];
+  const {data,error}=await supabase.from("daily_roll_badges")
+    .select("*").eq("roll_id",rollId).order("points",{ascending:false});
+  if(error)return [];
+  return data||[];
+}
+
+async function getOwnedBadges(userId){
+  if(!userId)return [];
+  const {data,error}=await supabase.from("user_badges")
+    .select("*").eq("user_id",userId).order("points",{ascending:false});
+  if(error)return [];
+  return data||[];
+}
+
+async function syncOwnedBadgesToLocal(){
+  const uid=state.session?.user?.id;
+  if(!uid)return;
+  const owned=await getOwnedBadges(uid);
+  try{
+    const old=JSON.parse(localStorage.getItem(SEEN_BADGES_KEY)||"[]");
+    const merged=new Set(Array.isArray(old)?old:[]);
+    owned.forEach(b=>merged.add(String(b.badge_key)));
+    localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify([...merged]));
+  }catch{}
+}
+
+function currentDailyNotes(){
+  const stored=readJson(DAILY_LOCAL_KEY);
+  if(!stored||stored.day!==localDayKey()||!Array.isArray(stored.notes)||stored.notes.length!==6)return null;
+  const notes=stored.notes.map(Number);
+  return notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36)?notes:null;
+}
+
+function currentRarityId(){
+  const classes=[...(document.getElementById("scoreBox")?.classList||[])];
+  const hit=classes.find(c=>c.startsWith("rarity-"));
+  return hit?hit.slice(7):String(document.getElementById("scoreRarity")?.textContent||"common").trim().toLowerCase().replace(/\s+/g,"-");
+}
+
+function badgeObjectsForNotes(notes){
+  const sim=window.__CHORDLE_SIM__;
+  if(!sim||!Array.isArray(notes))return [];
+  try{return [...sim.analyze(notes),...sim.wholeChordBadges(notes)];}catch{return [];}
+}
+
+async function persistCompletedRoll(){
+  if(state.restoring||state.persisting||!state.session?.user)return;
+  const next=document.getElementById("nextChord");
+  if(!next?.classList.contains("visible"))return;
+  const notes=currentDailyNotes();
+  if(!notes)return;
+
+  state.persisting=true;
+  try{
+    let roll=await getTodayRoll();
+    if(!roll){
+      const total=numericText(document.getElementById("score"));
+      if(total<=0)return;
+      const payload={
+        user_id:state.session.user.id,
+        roll_day:localDayKey(),
+        notes,
+        score:Math.round(total),
+        chord_name:String(document.getElementById("chordName")?.textContent||"").trim()||null,
+        chord_detail:String(document.getElementById("chordDetail")?.textContent||"").trim()||null,
+        rarity:currentRarityId()
+      };
+      const {data,error}=await supabase.from("daily_rolls").insert(payload).select("*").single();
+      if(error){
+        roll=await getTodayRoll();
+        if(!roll)throw error;
+      }else{
+        roll=data;
+      }
+
+      const badges=badgeObjectsForNotes(notes);
+      if(roll&&badges.length){
+        const rows=badges.map(b=>({
+          roll_id:roll.id,
+          user_id:state.session.user.id,
+          badge_key:String(b.key||b.name||"unknown"),
+          badge_name:String(b.name||"Badge"),
+          badge_description:String(b.desc||""),
+          rarity:String(b.rarity||"common").toLowerCase(),
+          points:Math.max(0,Math.round(Number(b.points)||0)),
+          special:!!b.special
+        }));
+        const {error:badgeError}=await supabase.from("daily_roll_badges").insert(rows);
+        if(badgeError)console.warn("Chordle badge save:",badgeError.message);
+      }
+    }
+
+    state.todayRoll=roll;
+    await loadProfile(state.session.user,2);
+    await syncOwnedBadgesToLocal();
+    if(location.hash==="#leaderboard")await renderLeaderboard();
+    await refreshBadgeExistCounts();
+    if(location.hash.startsWith("#profile"))await renderProfile();
+  }catch(err){
+    console.warn("Chordle roll persistence:",err);
+  }finally{
+    state.persisting=false;
+  }
+}
+
+function renderRestoredBadge(badge,notes){
+  const el=document.createElement("div");
+  el.className=`badge ${String(badge.rarity||"common").toLowerCase()}${badge.special?" analysis-final":""}`;
+  if(!badge.special)el.dataset.badgeKey=String(badge.key||badge.name||"unknown");
+  const needed=new Map();
+  for(const n of (badge.notes||[]))needed.set(Number(n),(needed.get(Number(n))||0)+1);
+  const ordered=[...notes].sort((a,b)=>a-b);
+  const strip=ordered.map(n=>{
+    const count=needed.get(n)||0;
+    if(count>0)needed.set(n,count-1);
+    return `<span class="badge-mini-note${count>0?" active":""}">${esc(noteName(n))}</span>`;
+  }).join("");
+  el.innerHTML=`<div class="badge-row"><div><div class="badge-name-line"><div class="badge-name">${esc(badge.name||"Badge")}</div></div><div class="badge-note-strip">${strip}</div><div class="badge-desc">${esc(badge.desc||"")}</div></div><div class="badge-meta"><div class="rarity">${esc(badge.rarity||"common")}</div><div class="points">+${formatScore(badge.points)}</div></div></div>`;
+  el.classList.add("show");
+  return el;
+}
+
+function restoreDailyRoll(roll){
+  if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return;
+  state.restoring=true;
+  try{
+    const notes=roll.notes.map(Number);
+    writeJson(DAILY_LOCAL_KEY,{day:roll.roll_day,notes});
+    try{
+      localStorage.setItem(LIFETIME_DAY_KEY,roll.roll_day);
+      if(state.profile)localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(Number(state.profile.lifetime_score)||0)));
+    }catch{}
+
+    const slots=document.getElementById("noteSlots");
+    if(slots){
+      if(slots.children.length!==6){
+        slots.innerHTML="";
+        for(let i=0;i<6;i++){const d=document.createElement("div");d.className="note-pill";slots.appendChild(d);}
+      }
+      [...slots.children].forEach((pill,i)=>{
+        pill.className="note-pill revealed";
+        pill.textContent=noteName(notes[i]);
+      });
+    }
+
+    const chordName=document.getElementById("chordName");
+    const chordDetail=document.getElementById("chordDetail");
+    if(chordName)chordName.textContent=roll.chord_name||"Today's chord";
+    if(chordDetail)chordDetail.textContent=roll.chord_detail||"Your chord has already been generated today.";
+
+    const scoreEl=document.getElementById("score");
+    const rarityEl=document.getElementById("scoreRarity");
+    if(scoreEl)scoreEl.textContent=formatScore(roll.score);
+    if(rarityEl)rarityEl.textContent=String(roll.rarity||"").replace(/-/g," ").replace(/\b\w/g,m=>m.toUpperCase());
+
+    document.getElementById("chordCard")?.classList.add("metadata-visible");
+    document.getElementById("scoreBox")?.classList.add("metadata-visible");
+    const scoreBox=document.getElementById("scoreBox");
+    if(scoreBox&&roll.rarity)scoreBox.classList.add("rarity-"+String(roll.rarity).toLowerCase());
+
+    const badgesEl=document.getElementById("badges");
+    if(badgesEl){
+      badgesEl.replaceChildren();
+      badgeObjectsForNotes(notes).forEach(b=>badgesEl.appendChild(renderRestoredBadge(b,notes)));
+    }
+
+    document.querySelectorAll(".key").forEach(k=>k.classList.remove("rolled","pending-roll","reveal-accent"));
+    notes.forEach(n=>document.querySelectorAll(`.key[data-note="${n}"]`).forEach(k=>k.classList.add("rolled")));
+
+    const next=document.getElementById("nextChord");
+    next?.classList.add("visible");
+    const revealBtn=document.getElementById("revealBtn");
+    if(revealBtn){
+      revealBtn.disabled=true;
+      revealBtn.textContent="Today's chord complete";
+    }
+    const reroll=document.getElementById("rerollBtn");
+    if(reroll)reroll.disabled=true;
+    const audio=document.getElementById("audioBtn");
+    if(audio)audio.disabled=true;
+    syncLifetimeDisplay();
+  }finally{
+    setTimeout(()=>{state.restoring=false;},0);
+  }
 }
 
 function mountAccountControls(){
   const page=document.getElementById("profilePage");
-  const head=page?.querySelector(".profile-head");
-  if(!page||!head)return;
-
+  const badgesPanel=page?.querySelector(".profile-badges-panel");
+  if(!page||!badgesPanel)return;
   let slot=document.getElementById("chordle-profile-auth-slot");
   if(!slot){
     slot=document.createElement("div");
     slot.id="chordle-profile-auth-slot";
-    head.insertAdjacentElement("afterend",slot);
   }
+  // Always keep account controls at the very bottom, below Top 10 Badges.
+  page.appendChild(slot);
 
-  const user=state.session?.user;
-  if(!user){
+  if(!state.session?.user){
     slot.innerHTML='<div class="ca-account-title">Chordle Account</div><div class="ca-account-row"><button class="ca-btn ca-primary" data-ca="signup">Create Account</button><button class="ca-btn" data-ca="login">Log In</button></div>';
     slot.querySelector('[data-ca="signup"]').onclick=showSignup;
     slot.querySelector('[data-ca="login"]').onclick=showLogin;
   }else{
-    slot.innerHTML='<div class="ca-account-title">Chordle Account</div><div class="ca-account-row"><div class="ca-account-user">Logged in as '+esc(username(user))+'</div><button class="ca-btn" data-ca="logout">Log Out</button></div>';
+    slot.innerHTML='<div class="ca-account-title">Chordle Account</div><div class="ca-account-row"><div class="ca-account-user">Logged in as '+esc(username())+'</div><button class="ca-btn" data-ca="logout">Log Out</button></div>';
     slot.querySelector('[data-ca="logout"]').onclick=logout;
   }
 }
 
-function renderProfile(){
+function renderBestRoll(best){
+  const el=document.getElementById("profileBestRoll");
+  if(!el)return;
+  if(!best){
+    el.innerHTML='<div class="profile-badges-empty">No completed rolls yet.</div>';
+    return;
+  }
+  el.innerHTML=`<div class="ca-best-roll"><div class="ca-best-roll-name">${esc(best.chord_name||"Chord")}</div><div class="ca-best-roll-meta">${formatScore(best.score)} points · ${esc(String(best.rarity||"").replace(/-/g," "))}</div></div>`;
+}
+
+function renderTopBadges(rows){
+  const el=document.getElementById("profileTopBadges");
+  if(!el)return;
+  el.replaceChildren();
+  if(!rows.length){
+    el.innerHTML='<div class="profile-badges-empty">No collectible badges yet.</div>';
+    return;
+  }
+  rows.slice(0,10).forEach(b=>{
+    const row=document.createElement("div");
+    row.className=`badge-index-row badge ${String(b.rarity||"common").toLowerCase()}`;
+    row.innerHTML=`<div class="badge-index-row-name badge-name">${esc(b.badge_name)}</div><div class="badge-index-row-score points">+${formatScore(b.points)}</div>`;
+    el.appendChild(row);
+  });
+}
+
+async function renderProfile(){
   unlockExistingPages();
   mountAccountControls();
 
   const nameEl=document.getElementById("profileName");
   const joinEl=document.getElementById("profileJoinDate");
   const lifetimeEl=document.getElementById("profileLifetimeScore");
-  const bestEl=document.getElementById("profileBestRoll");
-  const badgesEl=document.getElementById("profileTopBadges");
   const colorControl=document.getElementById("profileColorControl");
-
   const user=state.session?.user;
+
   if(!user){
     if(nameEl){nameEl.textContent="Profile";nameEl.style.color="";}
     if(joinEl)joinEl.textContent="Log in or create an account to view your profile";
     if(lifetimeEl)lifetimeEl.textContent="—";
     if(colorControl)colorControl.hidden=true;
-    if(bestEl)bestEl.innerHTML='<div class="profile-badges-empty">Your best roll will appear here after you sign in and complete a roll.</div>';
-    if(badgesEl)badgesEl.innerHTML='<div class="profile-badges-empty">Your top badges will appear here after you sign in.</div>';
+    renderBestRoll(null);renderTopBadges([]);
     return;
   }
 
-  const p=state.profile;
-  const name=username(user);
-  if(nameEl){
-    nameEl.textContent=name;
-    nameEl.style.color=color(p?.name_color);
-  }
-  if(joinEl)joinEl.textContent=joined(p?.joined_at||user.created_at);
-  if(lifetimeEl)lifetimeEl.textContent=score(p?.lifetime_score);
+  await loadProfile(user,1);
+  if(nameEl){nameEl.textContent=username(user);nameEl.style.color=color(state.profile?.name_color);}
+  if(joinEl)joinEl.textContent=joined(state.profile?.joined_at||user.created_at);
+  if(lifetimeEl)lifetimeEl.textContent=formatScore(state.profile?.lifetime_score);
   if(colorControl)colorControl.hidden=true;
 
-  if(bestEl && !bestEl.children.length){
-    bestEl.innerHTML='<div class="profile-badges-empty">No server-backed rolls recorded yet.</div>';
-  }
-  if(badgesEl && !badgesEl.children.length){
-    badgesEl.innerHTML='<div class="profile-badges-empty">No server-backed badges recorded yet.</div>';
-  }
+  const [{data:best},{data:badges}]=await Promise.all([
+    supabase.from("daily_rolls").select("*").eq("user_id",user.id).order("score",{ascending:false}).limit(1).maybeSingle(),
+    supabase.from("user_badges").select("*").eq("user_id",user.id).order("points",{ascending:false}).limit(10)
+  ]);
+  renderBestRoll(best||null);
+  renderTopBadges(badges||[]);
+  mountAccountControls();
 }
 
-function makeLeaderboardRow(p,rank){
-  const row=document.createElement("div");
-  row.className="leaderboard-metric-row";
-
-  const rankEl=document.createElement("div");
-  rankEl.className="leaderboard-metric-rank";
-  rankEl.textContent="#"+rank;
-
-  const user=document.createElement("div");
-  user.className="leaderboard-metric-user";
-  const link=document.createElement("a");
-  link.href="#profile/"+encodeURIComponent(p.username||p.id);
-  link.className="mock-profile-link adaptive-name-color";
-  link.textContent=p.username||"Unnamed";
-  const c=color(p.name_color);
-  if(c)link.style.color=c;
-  user.appendChild(link);
-
-  const value=document.createElement("div");
-  value.className="leaderboard-metric-value";
-  value.textContent=score(p.lifetime_score);
-
-  row.append(rankEl,user,value);
-  return row;
+function makeLeaderboardRow(rank,name,value,nameColor,href=null){
+  const row=document.createElement("div");row.className="ca-server-row";
+  const r=document.createElement("div");r.className="ca-server-rank";r.textContent="#"+rank;
+  const u=document.createElement(href?"a":"div");u.className="ca-server-user";u.textContent=name||"Unnamed";
+  if(href)u.href=href;
+  const c=color(nameColor);if(c)u.style.color=c;
+  const v=document.createElement("div");v.className="ca-server-value";v.textContent=value;
+  row.append(r,u,v);return row;
 }
 
-async function renderLeaderboard(){
+async function profileMapFor(ids){
+  const unique=[...new Set(ids.filter(Boolean))];
+  if(!unique.length)return new Map();
+  const {data}=await supabase.from("profiles").select("id,username,name_color,lifetime_score").in("id",unique);
+  return new Map((data||[]).map(p=>[p.id,p]));
+}
+
+async function renderLeaderboard(tab=state.leaderboardTab){
   unlockExistingPages();
-
+  state.leaderboardTab=tab||"today";
   const list=document.getElementById("leaderboardList");
   const winner=document.getElementById("leaderboardWinner");
   const date=document.getElementById("leaderboardDate");
   const title=document.getElementById("leaderboardTitle");
   if(!list)return;
+  list.replaceChildren();winner?.replaceChildren();
 
-  let rows;
-  try{rows=await loadLeaderboard();}
-  catch(err){
-    list.innerHTML='<div class="profile-badges-empty">Unable to load leaderboard.</div>';
-    console.warn("Chordle leaderboard:",err);
-    return;
+  let rows=[];
+  if(state.leaderboardTab==="alltime"){
+    const {data}=await supabase.from("profiles").select("id,username,name_color,lifetime_score").order("lifetime_score",{ascending:false}).limit(100);
+    rows=(data||[]).map(p=>({profile:p,value:formatScore(p.lifetime_score)+" lifetime"}));
+    if(title)title.textContent="All-Time Leaderboard";
+    if(date)date.textContent="Lifetime score";
+  }else if(state.leaderboardTab==="today"){
+    const {data}=await supabase.from("daily_rolls").select("user_id,score,chord_name,rarity").eq("roll_day",localDayKey()).order("score",{ascending:false}).limit(100);
+    const rolls=data||[], map=await profileMapFor(rolls.map(r=>r.user_id));
+    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
+    if(title)title.textContent="Today's Leaderboard";
+    if(date)date.textContent=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  }else if(state.leaderboardTab==="lowest"){
+    const {data}=await supabase.from("daily_rolls").select("user_id,score").order("score",{ascending:true}).limit(1000);
+    const first=new Map();for(const r of (data||[]))if(!first.has(r.user_id))first.set(r.user_id,r);
+    const rolls=[...first.values()].slice(0,100), map=await profileMapFor(rolls.map(r=>r.user_id));
+    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
+    if(title)title.textContent="Lowest Rolls";
+    if(date)date.textContent="Lowest recorded official roll";
+  }else if(state.leaderboardTab==="badges"){
+    const {data}=await supabase.from("user_badges").select("user_id,badge_key");
+    const counts=new Map();for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
+    const ids=[...counts.keys()], map=await profileMapFor(ids);
+    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" badges"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
+    if(title)title.textContent="Most Badges";
+    if(date)date.textContent="Unique collectible badges owned";
+  }else if(state.leaderboardTab==="discovered"){
+    const {data}=await supabase.from("user_badges").select("user_id,badge_key,discovered_at").order("discovered_at",{ascending:true});
+    const firstByBadge=new Map();for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
+    const counts=new Map();for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
+    const ids=[...counts.keys()], map=await profileMapFor(ids);
+    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" discovered"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
+    if(title)title.textContent="Most Discovered";
+    if(date)date.textContent="First global badge discoveries";
   }
-
-  if(title)title.textContent="All-Time Leaderboard";
-  if(date)date.textContent="Ranked by lifetime score";
-  if(winner)winner.replaceChildren();
-  list.replaceChildren();
 
   if(!rows.length){
-    list.innerHTML='<div class="profile-badges-empty">No player profiles yet.</div>';
-    return;
+    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  }else{
+    rows.forEach((row,i)=>list.appendChild(makeLeaderboardRow(i+1,row.profile.username,row.value,row.profile.name_color,"#profile/"+encodeURIComponent(row.profile.username||row.profile.id))));
   }
 
-  rows.forEach((p,i)=>list.appendChild(makeLeaderboardRow(p,i+1)));
+  document.getElementById("leaderboardTabs")?.querySelectorAll(".leaderboard-tab").forEach(btn=>{
+    const active=btn.dataset.leaderboardTab===state.leaderboardTab;
+    btn.classList.toggle("active",active);btn.setAttribute("aria-selected",active?"true":"false");
+  });
+}
 
-  const tabs=document.getElementById("leaderboardTabs");
-  if(tabs){
-    tabs.querySelectorAll(".leaderboard-tab").forEach(btn=>{
-      const active=btn.dataset.leaderboardTab==="alltime";
-      btn.classList.toggle("active",active);
-      btn.setAttribute("aria-selected",active?"true":"false");
-    });
+async function refreshBadgeExistCounts(){
+  const {data,error}=await supabase.from("user_badges").select("user_id,badge_key");
+  if(error)return;
+  const owners=new Map();
+  for(const b of (data||[])){
+    const key=String(b.badge_key);
+    if(!owners.has(key))owners.set(key,new Set());
+    owners.get(key).add(b.user_id);
   }
+  document.querySelectorAll(".badge-index-row[data-badge-key]").forEach(row=>{
+    const key=String(row.dataset.badgeKey||"");
+    const exists=row.closest(".badge-index-entry")?.querySelector(".badge-index-exists");
+    if(!exists)return;
+    const count=owners.get(key)?.size||0;
+    exists.textContent=count.toLocaleString()+" "+(count===1?"Exists":"Exist");
+  });
 }
 
 function showLogin(){
@@ -214,10 +500,7 @@ function showLogin(){
     const fd=new FormData(f);
     const {data,error}=await supabase.auth.signInWithPassword({email:String(fd.get("email")).trim(),password:String(fd.get("password"))});
     if(error){msg.textContent=error.message;return;}
-    state.session=data.session;
-    await loadProfile(data.user,2);
-    o.remove();
-    renderProfile();
+    state.session=data.session;await initializeSignedInUser(data.user);o.remove();renderProfile();
   };
 }
 
@@ -225,80 +508,96 @@ function showSignup(){
   const o=modal('<h2>Create account</h2><p class="ca-sub">Create your Chordle account.</p><form><div class="ca-field"><label>Username</label><input name="username" minlength="2" maxlength="24" autocomplete="username" required></div><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Create Account</button></div><div class="ca-msg"></div></form>');
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
   f.onsubmit=async e=>{
-    e.preventDefault();
-    const fd=new FormData(f);
-    const uname=String(fd.get("username")).trim();
-    const {data,error}=await supabase.auth.signUp({
-      email:String(fd.get("email")).trim(),
-      password:String(fd.get("password")),
-      options:{data:{username:uname}}
-    });
+    e.preventDefault();const fd=new FormData(f),uname=String(fd.get("username")).trim();
+    const {data,error}=await supabase.auth.signUp({email:String(fd.get("email")).trim(),password:String(fd.get("password")),options:{data:{username:uname}}});
     if(error){msg.textContent=error.message;return;}
-    if(data.session){
-      state.session=data.session;
-      await loadProfile(data.user,6);
-      o.remove();renderProfile();
-    }else{
-      msg.className="ca-msg ok";
-      msg.textContent="Account created. Check your email to confirm it, then log in.";
-    }
+    if(data.session){state.session=data.session;await initializeSignedInUser(data.user);o.remove();renderProfile();}
+    else{msg.className="ca-msg ok";msg.textContent="Account created. Check your email to confirm it, then log in.";}
   };
 }
 
 async function logout(){
   await supabase.auth.signOut();
-  state.session=null;state.profile=null;
+  state.session=null;state.profile=null;state.todayRoll=null;
   renderProfile();
 }
 
-function scheduleRouteRender(){
-  setTimeout(()=>{
-    unlockExistingPages();
-    const hash=location.hash||"";
-    if(hash.startsWith("#profile")) renderProfile();
-    if(hash==="#leaderboard") renderLeaderboard();
-  },0);
-  setTimeout(()=>{
-    const hash=location.hash||"";
-    if(hash.startsWith("#profile")) renderProfile();
-    if(hash==="#leaderboard") renderLeaderboard();
-  },80);
+async function initializeSignedInUser(user){
+  await loadProfile(user,2);
+  await syncOwnedBadgesToLocal();
+  state.todayRoll=await getTodayRoll(user.id);
+  if(state.todayRoll)restoreDailyRoll(state.todayRoll);
+  else if(document.getElementById("nextChord")?.classList.contains("visible"))await persistCompletedRoll();
 }
 
-async function refreshSession(session){
-  state.session=session;
-  if(session?.user)await loadProfile(session.user,1);
-  else state.profile=null;
-  scheduleRouteRender();
+function wireNavigation(){
+  document.getElementById("profileNavBtn")?.addEventListener("click",e=>{
+    e.preventDefault();e.stopImmediatePropagation();applyRoute("profile");renderProfile();
+  },true);
+
+  document.getElementById("leaderboardNavBtn")?.addEventListener("click",e=>{
+    e.preventDefault();e.stopImmediatePropagation();applyRoute("leaderboard");renderLeaderboard("today");
+  },true);
+
+  document.getElementById("leaderboardTabs")?.addEventListener("click",e=>{
+    const btn=e.target.closest(".leaderboard-tab");if(!btn)return;
+    e.preventDefault();e.stopImmediatePropagation();renderLeaderboard(btn.dataset.leaderboardTab||"today");
+  },true);
+
+  document.getElementById("badgesNavBtn")?.addEventListener("click",()=>{
+    setTimeout(refreshBadgeExistCounts,80);setTimeout(refreshBadgeExistCounts,350);
+  },true);
+}
+
+function wireRollCompletion(){
+  const next=document.getElementById("nextChord");
+  if(next){
+    const observer=new MutationObserver(()=>{
+      if(next.classList.contains("visible")&&!state.restoring)setTimeout(persistCompletedRoll,0);
+    });
+    observer.observe(next,{attributes:true,attributeFilter:["class"]});
+  }
+
+  document.getElementById("revealBtn")?.addEventListener("click",()=>{
+    // A server row for today always wins over the local button.
+    if(state.todayRoll){
+      restoreDailyRoll(state.todayRoll);
+    }
+  },true);
 }
 
 async function boot(){
   unlockExistingPages();
-
-  const profileBtn=document.getElementById("profileNavBtn");
-  const leaderboardBtn=document.getElementById("leaderboardNavBtn");
-  profileBtn?.addEventListener("click",scheduleRouteRender);
-  leaderboardBtn?.addEventListener("click",scheduleRouteRender);
-
-  document.getElementById("leaderboardTabs")?.addEventListener("click",e=>{
-    const btn=e.target.closest(".leaderboard-tab");
-    if(!btn)return;
-    // Until daily-roll/badge server tables are connected, keep this existing
-    // page backed by the profiles table rather than displaying mock data.
-    setTimeout(renderLeaderboard,0);
-  });
-
-  window.addEventListener("hashchange",scheduleRouteRender);
+  wireNavigation();
+  wireRollCompletion();
 
   const {data}=await supabase.auth.getSession();
-  await refreshSession(data.session);
+  state.session=data.session;
+  if(data.session?.user)await initializeSignedInUser(data.session.user);
+  syncLifetimeDisplay();
 
   supabase.auth.onAuthStateChange((_event,session)=>{
-    setTimeout(()=>refreshSession(session),0);
+    setTimeout(async()=>{
+      state.session=session;
+      if(session?.user)await initializeSignedInUser(session.user);
+      else{state.profile=null;state.todayRoll=null;}
+      if(location.hash.startsWith("#profile"))renderProfile();
+      if(location.hash==="#leaderboard")renderLeaderboard(state.leaderboardTab);
+    },0);
   });
+
+  setInterval(()=>{
+    const day=localDayKey();
+    if(day!==state.dayKey){
+      // Midnight reset: reload the app so Generate Chord is available for the new day.
+      location.reload();
+      return;
+    }
+    if(location.hash==="#badges")refreshBadgeExistCounts();
+  },1000);
 }
 
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,loadProfile,loadLeaderboard};
+window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts};
