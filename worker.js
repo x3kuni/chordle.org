@@ -116,6 +116,57 @@ export default {
     }
   }
 
+  function chordleBadgeDescription(badge){
+    if(!badge) return '';
+    const key=String(badge.key||'');
+    const parts=key.split(':');
+    const mode=parts[1]||'';
+    const def=(CHORD_BADGE_DEFS||[]).find(item=>String(item.id)===parts[0]);
+
+    const pitchClassesFromDef=(item)=>{
+      if(Array.isArray(item?.pitchClasses) && item.pitchClasses.length){
+        return [...new Set(item.pitchClasses.map(pc=>((Number(pc)%12)+12)%12))];
+      }
+      const mask=Number(item?.mask);
+      if(Number.isFinite(mask)){
+        const pcs=[];
+        for(let pc=0;pc<12;pc++) if(mask & (1<<pc)) pcs.push(pc);
+        return pcs;
+      }
+      return [];
+    };
+
+    const orderFromLabel=(item,pcs)=>{
+      if(!pcs.length) return pcs;
+      const rootToken=String(item?.label||'').trim().split(/\\s+/)[0];
+      let root=NOTE_NAMES_FLAT.indexOf(rootToken);
+      if(root<0) root=NOTE_NAMES_SHARP.indexOf(rootToken);
+      if(root<0 || !pcs.includes(root)) return pcs;
+      return [...pcs].sort((a,b)=>(((a-root)+12)%12)-(((b-root)+12)%12));
+    };
+
+    const noteListFor=(pcs)=>{
+      const allowed=new Set(pcs);
+      const values=[];
+      for(let n=0;n<=36;n++) if(allowed.has(((n%12)+12)%12)) values.push(noteName(n,true));
+      return values;
+    };
+
+    if(def && (mode==='pure' || mode==='balance')){
+      const pcs=orderFromLabel(def,pitchClassesFromDef(def));
+      const pitchNames=pcs.map(pc=>NOTE_NAMES_FLAT[pc]);
+      const playable=noteListFor(pcs);
+      if(mode==='pure'){
+        return 'All six generated notes must belong only to the pitch classes '+pitchNames.join(', ')+'. Allowed physical notes in Chordle\\'s C2–C5 range are '+playable.join(', ')+'. Octave placement and duplication are allowed, but no other pitch class may appear.';
+      }
+      return 'The six-note roll must contain exactly two generated notes from each of these pitch classes: '+pitchNames.join(', ')+'. Valid physical notes come from '+playable.join(', ')+'; octave placement may vary as long as the final count is exactly two of each pitch class.';
+    }
+
+    const existing=String(badge.desc||'').trim();
+    if(existing) return existing;
+    return 'Earned when the roll satisfies Chordle\\'s “'+String(badge.name||'badge')+'” rule.';
+  }
+
   window.__CHORDLE_APP__={
     createRollCard:createMockRollCard,
     createLeaderboardRow,
@@ -123,6 +174,7 @@ export default {
     createProfileBadgeRow,
     openBadgeDetailByKey,
     getCatalogBadgeByKey:badgeCatalogEntryByKey,
+    badgeDescription:chordleBadgeDescription,
     getBadgeFromHash:()=>{
       const id=badgeDetailIdFromHash();
       return id===null?null:(badgeCatalogByPublicId().get(id)||null);
@@ -148,7 +200,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=auth-attention-pr8-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=share-badges-auth-pr9-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
