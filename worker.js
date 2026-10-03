@@ -128,7 +128,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=refined-live-ui-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=refined-live-ui-2"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
