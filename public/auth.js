@@ -434,62 +434,131 @@ async function profileMapFor(ids){
   return new Map((data||[]).map(p=>[p.id,p]));
 }
 
+function renderedLeaderboardRow(profile,rank,summary){
+  const account={id:profile.id,name:profile.username||'Player'};
+  const row=nativeApp()?.createLeaderboardRow?.(account,rank,summary);
+  if(row)patchRenderedProfileLink(row,profile);
+  return row;
+}
+
+function renderedMetricRow(profile,rank,valueText){
+  const account={id:profile.id,name:profile.username||'Player'};
+  const row=nativeApp()?.createLeaderboardMetricRow?.(account,rank,valueText);
+  if(row)patchRenderedProfileLink(row,profile);
+  return row;
+}
+
+async function fetchTodayRolls(){
+  const {data,error}=await supabase.from('chordle_rolls').select('*').eq('roll_day',localDayKey()).order('score',{ascending:false}).limit(100);
+  if(error){console.warn('Chordle today leaderboard:',error.message);return [];}
+  return data||[];
+}
+
+async function bestRollsByUser(desc=true){
+  const {data,error}=await supabase.from('chordle_rolls').select('*').order('score',{ascending:!desc}).limit(5000);
+  if(error){console.warn('Chordle roll ranking:',error.message);return [];}
+  const first=new Map();
+  for(const roll of (data||[]))if(!first.has(roll.user_id))first.set(roll.user_id,roll);
+  return [...first.values()];
+}
+
 async function renderLeaderboard(tab=state.leaderboardTab){
   unlockExistingPages();
-  state.leaderboardTab=tab||"today";
-  const list=document.getElementById("leaderboardList");
-  const winner=document.getElementById("leaderboardWinner");
-  const date=document.getElementById("leaderboardDate");
-  const title=document.getElementById("leaderboardTitle");
-  if(!list)return;
-  list.replaceChildren();winner?.replaceChildren();
+  state.leaderboardTab=tab||'today';
+  const list=document.getElementById('leaderboardList');
+  const winnerEl=document.getElementById('leaderboardWinner');
+  const dateEl=document.getElementById('leaderboardDate');
+  const titleEl=document.getElementById('leaderboardTitle');
+  if(!list||!winnerEl)return;
 
-  let rows=[];
-  if(state.leaderboardTab==="alltime"){
-    const {data}=await supabase.from("profiles").select("id,username,name_color,lifetime_score").order("lifetime_score",{ascending:false}).limit(100);
-    rows=(data||[]).map(p=>({profile:p,value:formatScore(p.lifetime_score)+" lifetime"}));
-    if(title)title.textContent="All-Time Leaderboard";
-    if(date)date.textContent="Lifetime score";
-  }else if(state.leaderboardTab==="today"){
-    const {data}=await supabase.from("chordle_rolls").select("user_id,score,chord_name,rarity").eq("roll_day",localDayKey()).order("score",{ascending:false}).limit(100);
-    const rolls=data||[], map=await profileMapFor(rolls.map(r=>r.user_id));
-    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
-    if(title)title.textContent="Today's Leaderboard";
-    if(date)date.textContent=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
-  }else if(state.leaderboardTab==="lowest"){
-    const {data}=await supabase.from("chordle_rolls").select("user_id,score").order("score",{ascending:true}).limit(1000);
-    const first=new Map();for(const r of (data||[]))if(!first.has(r.user_id))first.set(r.user_id,r);
-    const rolls=[...first.values()].slice(0,100), map=await profileMapFor(rolls.map(r=>r.user_id));
-    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
-    if(title)title.textContent="Lowest Rolls";
-    if(date)date.textContent="Lowest recorded official roll";
-  }else if(state.leaderboardTab==="badges"){
-    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key");
-    const counts=new Map();for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
-    const ids=[...counts.keys()], map=await profileMapFor(ids);
-    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" badges"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
-    if(title)title.textContent="Most Badges";
-    if(date)date.textContent="Unique collectible badges owned";
-  }else if(state.leaderboardTab==="discovered"){
-    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key,discovered_at").order("discovered_at",{ascending:true});
-    const firstByBadge=new Map();for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
-    const counts=new Map();for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
-    const ids=[...counts.keys()], map=await profileMapFor(ids);
-    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" discovered"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
-    if(title)title.textContent="Most Discovered";
-    if(date)date.textContent="First global badge discoveries";
-  }
+  list.replaceChildren();
+  winnerEl.replaceChildren();
+  if(titleEl)titleEl.textContent="Today's Leaderboard";
+  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  if(!rows.length){
-    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  const todayRolls=await fetchTodayRolls();
+  const todayProfiles=await profileMapFor(todayRolls.map(r=>r.user_id));
+  const winner=todayRolls[0]||null;
+  if(winner){
+    const profile=todayProfiles.get(winner.user_id)||{id:winner.user_id,username:'Player',name_color:'#ffffff'};
+    const summary=rollSummary(winner);
+    const rank=document.createElement('div');
+    rank.className='leaderboard-winner-rank';
+    rank.textContent='#1 Today';
+    const card=summary?nativeApp()?.createRollCard?.(summary,{winner:true,showRarity:false}):null;
+    const by=document.createElement('div');
+    by.className='leaderboard-winner-by';
+    by.append('Rolled by ',makeProfileLink(profile));
+    winnerEl.append(rank);
+    if(card)winnerEl.appendChild(card);
+    winnerEl.appendChild(by);
   }else{
-    rows.forEach((row,i)=>list.appendChild(makeLeaderboardRow(i+1,row.profile.username,row.value,row.profile.name_color,"#profile/"+encodeURIComponent(row.profile.username||row.profile.id))));
+    const empty=document.createElement('div');
+    empty.className='profile-badges-empty';
+    empty.textContent='No rolls have been completed today.';
+    winnerEl.appendChild(empty);
   }
 
-  document.getElementById("leaderboardTabs")?.querySelectorAll(".leaderboard-tab").forEach(btn=>{
+  if(state.leaderboardTab==='today'){
+    todayRolls.slice(1).forEach((roll,index)=>{
+      const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='alltime'){
+    const rolls=await bestRollsByUser(true);
+    const profiles=await profileMapFor(rolls.map(r=>r.user_id));
+    rolls.forEach((roll,index)=>{
+      const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='lowest'){
+    const rolls=await bestRollsByUser(false);
+    const profiles=await profileMapFor(rolls.map(r=>r.user_id));
+    rolls.forEach((roll,index)=>{
+      const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='badges'){
+    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
+    const counts=new Map();
+    for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
+    const ids=[...counts.keys()];
+    const profiles=await profileMapFor(ids);
+    const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
+      .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
+    ranked.forEach((entry,index)=>{
+      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges');
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='discovered'){
+    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
+    const firstByBadge=new Map();
+    for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
+    const counts=new Map();
+    for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
+    const ids=[...counts.keys()];
+    const profiles=await profileMapFor(ids);
+    const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
+      .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
+    ranked.forEach((entry,index)=>{
+      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered');
+      if(row)list.appendChild(row);
+    });
+  }
+
+  if(!list.children.length){
+    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  }
+
+  document.getElementById('leaderboardTabs')?.querySelectorAll('.leaderboard-tab').forEach(btn=>{
     const active=btn.dataset.leaderboardTab===state.leaderboardTab;
-    btn.classList.toggle("active",active);btn.setAttribute("aria-selected",active?"true":"false");
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-selected',active?'true':'false');
   });
+  nativeApp()?.queueMockScoreFit?.(document);
 }
 
 async function refreshBadgeExistCounts(){
