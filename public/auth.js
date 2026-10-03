@@ -30,6 +30,7 @@ const state = {
 
 const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
 const PROFILE_NAME_COLORS={white:"#f4f5f7",red:"#ff6262",orange:"#ff9f43",yellow:"#ffd84d",green:"#62d58b",blue:"#5ea7ff",purple:"#aa79ff",pink:"#ff72c6"};
+const INFO_HASHES=new Set(["#credits","#how-to-play","#updates"]);
 
 const style=document.createElement("style");
 style.textContent=`
@@ -60,6 +61,28 @@ style.textContent=`
 .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px);line-height:.96;padding:0 6px 8px}
 .leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px);line-height:.96}
 .profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
+.chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
+.chordle-footer a{color:#747983;text-decoration:none;transition:color .15s ease}
+.chordle-footer a:hover{color:#a6abb4}
+.chordle-footer-sep{padding:0 7px;color:#555a62}
+.chordle-info-page{display:none;width:min(760px,92vw);margin:0 auto;min-height:calc(100vh - 210px);padding:58px 0 90px}
+html.chordle-info-route .chordle-info-page{display:block}
+html.chordle-info-route .piano-banner,
+html.chordle-info-route .game-camera,
+html.chordle-info-route .settings-page,
+html.chordle-info-route .badges-index-page,
+html.chordle-info-route .badge-detail-page,
+html.chordle-info-route .leaderboard-page,
+html.chordle-info-route .profile-page,
+html.chordle-info-route .admin-luck{display:none!important}
+.chordle-info-title{margin:0 0 30px;text-align:center;font-size:clamp(32px,6vw,48px);font-weight:900;letter-spacing:-.02em}
+.chordle-info-copy{width:min(680px,100%);margin:0 auto;color:#c9ccd2;font-size:15px;line-height:1.72}
+.chordle-info-copy p{margin:0 0 22px}
+.chordle-info-copy a{color:#eef0f4;font-weight:800;text-decoration:none}
+.chordle-info-copy a:hover{text-decoration:underline}
+.chordle-update-card{padding:20px 22px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.035)}
+.chordle-update-title{margin:0 0 10px;color:#eef0f4;font-size:19px;font-weight:850}
+.chordle-update-body{margin:0!important;color:#b9bdc5}
 @media(max-width:620px){
   .ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}
   .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(50px,14vw,82px)}
@@ -93,11 +116,17 @@ function applyNameColor(el,value,userId=''){
     el.style.setProperty('--account-name-color',chosen);
   }
 }
-function profileHref(id){return id?'#profile/'+encodeURIComponent(id):'#profile';}
+function profileHref(value){
+  if(value&&typeof value==='object'){
+    const key=value.public_id??value.id??value.username;
+    return key!==undefined&&key!==null?'#profile/'+encodeURIComponent(String(key)):'#profile';
+  }
+  return value!==undefined&&value!==null&&value!==''?'#profile/'+encodeURIComponent(String(value)):'#profile';
+}
 function makeProfileLink(profile,extraClass='mock-profile-link'){
   const a=document.createElement('a');
   a.className=extraClass;
-  a.href=profileHref(profile?.id);
+  a.href=profileHref(profile);
   a.textContent=profile?.username||'Player';
   applyNameColor(a,profile?.name_color,profile?.id);
   return a;
@@ -109,9 +138,11 @@ function profileTargetFromHash(){
 }
 async function fetchProfileTarget(target){
   if(!target)return null;
-  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(target));
-  let q=supabase.from('profiles').select('id,username,name_color,lifetime_score,joined_at');
-  q=isUuid?q.eq('id',target):q.eq('username',target);
+  const raw=String(target);
+  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw);
+  const isPublicId=/^\d+$/.test(raw);
+  let q=supabase.from('profiles').select('id,public_id,username,name_color,lifetime_score,joined_at');
+  q=isUuid?q.eq('id',raw):(isPublicId?q.eq('public_id',Number(raw)):q.eq('username',raw));
   const {data,error}=await q.maybeSingle();
   if(error){console.warn('Chordle profile lookup:',error.message);return null;}
   return data||null;
@@ -133,9 +164,111 @@ function rollSummary(roll){
 function patchRenderedProfileLink(root,profile){
   const a=root?.querySelector?.('.mock-profile-link');
   if(!a||!profile)return;
-  a.href=profileHref(profile.id);
+  a.href=profileHref(profile);
   a.textContent=profile.username||'Player';
   applyNameColor(a,profile.name_color,profile.id);
+}
+
+
+function mountSiteFooter(){
+  let footer=document.getElementById('chordleFooter');
+  if(footer)return footer;
+  footer=document.createElement('footer');
+  footer.id='chordleFooter';
+  footer.className='chordle-footer';
+  footer.innerHTML='<a href="#credits">Credits</a><span class="chordle-footer-sep">-</span><a href="#how-to-play">How to play</a><span class="chordle-footer-sep">-</span><a href="#updates">Updates</a>';
+  document.body.appendChild(footer);
+  return footer;
+}
+
+function infoProfileLink(username,label=username){
+  const a=document.createElement('a');
+  a.href='#profile/'+encodeURIComponent(username);
+  a.textContent=label;
+  return a;
+}
+
+function buildCreditsPage(copy){
+  const p1=document.createElement('p');
+  p1.append('Developed by ',infoProfileLink('Kii'));
+
+  const p2=document.createElement('p');
+  p2.append('Tested by ',infoProfileLink('gyban'),' and ',infoProfileLink('LeDrivel'));
+
+  const p3=document.createElement('p');
+  p3.textContent='Inspired by RNGdle and a bit of Sols Rng.';
+
+  const p4=document.createElement('p');
+  p4.textContent="Whether you're a musical enjoyer like me or not, hope you enjoy my game!";
+
+  copy.append(p1,p2,p3,p4);
+}
+
+function buildHowToPlayPage(copy){
+  const paragraphs=[
+    'Click the Generate chord button. This will generate 6 notes on a piano at random within a range from C2 to C5. Your 6 notes generate a chord (which we try to put a name to as best we can).',
+    'Depending on a myriad of factors, like intervals, pairs, chord matches, and more, you gain points by the badges that your chord applies to. The rarer the badge is, typically, the more points you get.',
+    "You get 2 final badges, which is a complex algorithm that calculates your chord's dissonance, and beauty. You get bonus points for this.",
+    'If your chord gains enough points, it might show up on the leaderboard :o',
+    "Here's something unique: You, and every other player in the game, are trying to find all the badges in the game. You can see how many copies of a certain badge exists, and you can see who was the first to discover it.",
+    'There are currently 12 rarities, with 1600+ badges. Its up to you and the community to try and discover them all.',
+    'Good luck, and have fun!'
+  ];
+  for(const value of paragraphs){
+    const p=document.createElement('p');
+    p.textContent=value;
+    copy.appendChild(p);
+  }
+}
+
+function buildUpdatesPage(copy){
+  const card=document.createElement('section');
+  card.className='chordle-update-card';
+  const title=document.createElement('h2');
+  title.className='chordle-update-title';
+  title.textContent='Beta 0.1 - October 2, 2026';
+  const body=document.createElement('p');
+  body.className='chordle-update-body';
+  body.textContent='The beta version of the game is officially public';
+  card.append(title,body);
+  copy.appendChild(card);
+}
+
+function mountInfoPage(){
+  let page=document.getElementById('chordleInfoPage');
+  if(page)return page;
+  page=document.createElement('main');
+  page.id='chordleInfoPage';
+  page.className='chordle-info-page';
+  page.innerHTML='<h1 class="chordle-info-title" id="chordleInfoTitle"></h1><div class="chordle-info-copy" id="chordleInfoCopy"></div>';
+  document.body.insertBefore(page,document.getElementById('chordleFooter')||null);
+  return page;
+}
+
+function renderInfoRoute(){
+  const hash=location.hash||'#home';
+  const active=INFO_HASHES.has(hash);
+  document.documentElement.classList.toggle('chordle-info-route',active);
+  if(!active)return false;
+
+  const page=mountInfoPage();
+  const title=page.querySelector('#chordleInfoTitle');
+  const copy=page.querySelector('#chordleInfoCopy');
+  copy.replaceChildren();
+
+  if(hash==='#credits'){
+    title.textContent='Credits';
+    buildCreditsPage(copy);
+  }else if(hash==='#how-to-play'){
+    title.textContent='How to play';
+    buildHowToPlayPage(copy);
+  }else{
+    title.textContent='Updates';
+    buildUpdatesPage(copy);
+  }
+
+  window.scrollTo({top:0,left:0,behavior:'auto'});
+  return true;
 }
 
 function modal(inner){
@@ -173,7 +306,7 @@ async function loadProfile(user=state.session?.user,retries=0){
   if(!user)return null;
   for(let i=0;i<=retries;i++){
     const {data,error}=await supabase.from("profiles")
-      .select("id,username,name_color,lifetime_score,joined_at")
+      .select("id,public_id,username,name_color,lifetime_score,joined_at")
       .eq("id",user.id).maybeSingle();
     if(!error&&data){state.profile=data;syncLifetimeDisplay();return data;}
     if(i<retries)await new Promise(r=>setTimeout(r,250));
@@ -434,7 +567,7 @@ function bindProfileColorControl(targetProfile,ownProfile){
       event.stopPropagation();
       const uid=state.session?.user?.id;
       if(!uid)return;
-      const {data,error}=await supabase.from('profiles').update({name_color:value}).eq('id',uid).select('id,username,name_color,lifetime_score,joined_at').single();
+      const {data,error}=await supabase.from('profiles').update({name_color:value}).eq('id',uid).select('id,public_id,username,name_color,lifetime_score,joined_at').single();
       if(error){console.warn('Chordle name color:',error.message);return;}
       state.profile=data;
       fill.style.setProperty('--profile-color-fill',value);
@@ -472,7 +605,10 @@ async function renderProfile(){
 
   if(ownProfile)state.profile=target;
   if(nameEl){nameEl.textContent=target.username||'Player';applyNameColor(nameEl,target.name_color,target.id);}
-  if(joinEl)joinEl.textContent=joined(target.joined_at);
+  if(joinEl){
+    const joinedText=joined(target.joined_at);
+    joinEl.textContent=target.public_id?('User ID #'+target.public_id+' · '+joinedText):joinedText;
+  }
   if(lifetimeEl)lifetimeEl.textContent=formatScore(target.lifetime_score);
   bindProfileColorControl(target,ownProfile);
 
@@ -498,7 +634,7 @@ function makeLeaderboardRow(rank,name,value,nameColor,href=null){
 async function profileMapFor(ids){
   const unique=[...new Set(ids.filter(Boolean))];
   if(!unique.length)return new Map();
-  const {data}=await supabase.from("profiles").select("id,username,name_color,lifetime_score").in("id",unique);
+  const {data}=await supabase.from("profiles").select("id,public_id,username,name_color,lifetime_score").in("id",unique);
   return new Map((data||[]).map(p=>[p.id,p]));
 }
 
@@ -621,7 +757,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
     });
   }else if(state.leaderboardTab==='lifetime'){
     const {data,error}=await supabase.from('profiles')
-      .select('id,username,name_color,lifetime_score')
+      .select('id,public_id,username,name_color,lifetime_score')
       .order('lifetime_score',{ascending:false})
       .limit(100);
     if(seq!==state.leaderboardRenderSeq)return;
@@ -794,7 +930,7 @@ async function initializeSignedInUser(user){
 function wireNavigation(){
   document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
     e.preventDefault();e.stopImmediatePropagation();
-    const target=profileHref(state.session?.user?.id);
+    const target=profileHref(state.profile||state.session?.user?.id);
     if(location.hash===target)renderProfile();
     else location.hash=target;
   },true);
@@ -819,6 +955,7 @@ function wireNavigation(){
 
   window.addEventListener('hashchange',()=>{
     setTimeout(()=>{
+      if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
       else if(location.hash==='#badges')refreshBadgeExistCounts();
@@ -849,6 +986,8 @@ function wireRollCompletion(){
 async function boot(){
   unlockExistingPages();
   configureLeaderboardTabs();
+  mountSiteFooter();
+  mountInfoPage();
   wireNavigation();
   wireRollCompletion();
 
@@ -867,7 +1006,8 @@ async function boot(){
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
 
-  if(location.hash.startsWith('#profile'))await renderProfile();
+  if(renderInfoRoute()){}
+  else if(location.hash.startsWith('#profile'))await renderProfile();
   else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
   else if(location.hash==='#badges')await refreshBadgeExistCounts();
   else if(location.hash.startsWith('#badges/'))await renderBadgeDetailFromSupabase();
@@ -877,6 +1017,7 @@ async function boot(){
       state.session=session;
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
+      if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
       if(location.hash==='#badges')refreshBadgeExistCounts();
