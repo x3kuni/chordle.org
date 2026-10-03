@@ -8,6 +8,11 @@ alter table public.profiles
   add constraint profiles_username_format
   check (username ~ '^[A-Za-z0-9_]{3,16}$');
 
+-- Usernames are case-insensitively unique. The browser performs a friendly
+-- availability check, while this index is the authoritative race-safe guard.
+create unique index if not exists profiles_username_lower_unique
+  on public.profiles (lower(username));
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
