@@ -13,6 +13,7 @@ const DAILY_LOCAL_KEY = "chordle_generated_daily_roll_v1";
 const LIFETIME_LOCAL_KEY = "chord_rng_lifetime_v1";
 const LIFETIME_DAY_KEY = "chord_rng_lifetime_day_v1";
 const SEEN_BADGES_KEY = "chordle_seen_badges_v1";
+const PENDING_ANON_ROLL_KEY = "chordle_pending_anonymous_roll_v1";
 
 const state = {
   session: null,
@@ -25,6 +26,7 @@ const state = {
   leaderboardWinnerKey: null,
   leaderboardTodayRolls: [],
   leaderboardTodayProfiles: new Map(),
+  anonymousPromptedDay: null,
   dayKey: localDayKey()
 };
 
@@ -83,6 +85,21 @@ html.chordle-info-route .admin-luck{display:none!important}
 .chordle-update-card{padding:20px 22px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.035)}
 .chordle-update-title{margin:0 0 10px;color:#eef0f4;font-size:19px;font-weight:850}
 .chordle-update-body{margin:0!important;color:#b9bdc5}
+.ca-save-overlay{background:rgba(0,0,0,.52);backdrop-filter:blur(5px)}
+.ca-save-overlay .ca-modal{width:min(450px,100%);text-align:center;border-radius:14px}
+.ca-save-overlay .ca-modal h2{margin-top:8px;font-size:27px}
+.ca-save-overlay .ca-sub{max-width:340px;margin-left:auto;margin-right:auto}
+.ca-save-choice{display:flex;gap:10px;margin-top:20px}
+.ca-save-choice .ca-btn{flex:1;padding:12px}
+#profileNavBtn.chordle-profile-login-pulse{
+  position:relative;
+  border-radius:8px;
+  animation:chordleProfileLoginPulse 1.55s ease-in-out infinite;
+}
+@keyframes chordleProfileLoginPulse{
+  0%,100%{box-shadow:0 0 0 1px rgba(210,216,228,.28),0 0 5px rgba(220,225,238,.10)}
+  50%{box-shadow:0 0 0 2px rgba(226,231,242,.72),0 0 14px rgba(220,225,238,.30)}
+}
 @media(max-width:620px){
   .ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}
   .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(50px,14vw,82px)}
@@ -271,12 +288,35 @@ function renderInfoRoute(){
   return true;
 }
 
-function modal(inner){
+function setModalContent(o,inner,onClose=null){
+  const panel=o?.querySelector?.(".ca-modal");
+  if(!panel)return o;
+  panel.innerHTML='<button class="ca-x" aria-label="Close">×</button>'+inner;
+  const close=()=>{
+    if(!o.isConnected)return;
+    o.remove();
+    if(typeof onClose==='function')onClose();
+  };
+  o._chordleClose=close;
+  panel.querySelector(".ca-x").onclick=close;
+  return o;
+}
+
+function modal(inner,onClose=null){
   const o=document.createElement("div");o.className="ca-overlay";
-  o.innerHTML='<div class="ca-modal"><button class="ca-x" aria-label="Close">×</button>'+inner+'</div>';
-  o.querySelector(".ca-x").onclick=()=>o.remove();
-  o.addEventListener("click",e=>{if(e.target===o)o.remove();});
-  document.body.appendChild(o);return o;
+  o.innerHTML='<div class="ca-modal"></div>';
+  setModalContent(o,inner,onClose);
+  o.addEventListener("click",e=>{if(e.target===o)o._chordleClose?.();});
+  document.body.appendChild(o);
+  return o;
+}
+
+function highlightProfileLogin(){
+  document.getElementById('profileNavBtn')?.classList.add('chordle-profile-login-pulse');
+}
+
+function clearProfileLoginHighlight(){
+  document.getElementById('profileNavBtn')?.classList.remove('chordle-profile-login-pulse');
 }
 
 function unlockExistingPages(){
@@ -379,6 +419,78 @@ function badgeObjectsForNotes(notes){
   const sim=window.__CHORDLE_SIM__;
   if(!sim||!Array.isArray(notes))return [];
   try{return [...sim.analyze(notes),...sim.wholeChordBadges(notes)];}catch{return [];}
+}
+
+function captureAnonymousRoll(){
+  if(state.session?.user)return null;
+  const notes=currentDailyNotes();
+  const total=numericText(document.getElementById('score'));
+  const next=document.getElementById('nextChord');
+  if(!notes||total<=0||!next?.classList.contains('visible'))return null;
+  const pending={
+    roll_day:localDayKey(),
+    notes,
+    score:Math.round(total),
+    chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
+    chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
+    rarity:currentRarityId()
+  };
+  writeJson(PENDING_ANON_ROLL_KEY,pending);
+  return pending;
+}
+
+async function persistPendingAnonymousRoll(){
+  if(!state.session?.user)return null;
+  const pending=readJson(PENDING_ANON_ROLL_KEY);
+  if(!pending)return null;
+  if(pending.roll_day!==localDayKey()){
+    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+    return null;
+  }
+  const notes=Array.isArray(pending.notes)?pending.notes.map(Number):[];
+  if(notes.length!==6||!notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36))return null;
+
+  let roll=await getTodayRoll();
+  if(!roll){
+    const payload={
+      user_id:state.session.user.id,
+      roll_day:pending.roll_day,
+      notes,
+      score:Math.max(0,Math.round(Number(pending.score)||0)),
+      chord_name:pending.chord_name||null,
+      chord_detail:pending.chord_detail||null,
+      rarity:String(pending.rarity||'common').toLowerCase()
+    };
+    if(payload.score<=0)return null;
+    const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
+    if(error){
+      roll=await getTodayRoll();
+      if(!roll)throw error;
+    }else roll=data;
+  }
+
+  const badges=badgeObjectsForNotes(notes);
+  if(roll&&badges.length){
+    const existing=await getRollBadges(roll.id);
+    const existingKeys=new Set(existing.map(b=>String(b.badge_key)));
+    const rows=badges.filter(b=>!existingKeys.has(String(b.key||b.name||'unknown'))).map(b=>({
+      roll_id:roll.id,
+      user_id:state.session.user.id,
+      badge_key:String(b.key||b.name||'unknown'),
+      badge_name:String(b.name||'Badge'),
+      badge_description:String(b.desc||''),
+      rarity:String(b.rarity||'common').toLowerCase(),
+      points:Math.max(0,Math.round(Number(b.points)||0)),
+      special:!!b.special
+    }));
+    if(rows.length){
+      const {error}=await supabase.from('chordle_roll_badges').insert(rows);
+      if(error)throw error;
+    }
+  }
+
+  try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+  return roll||null;
 }
 
 async function persistCompletedRoll(){
@@ -889,28 +1001,71 @@ async function renderBadgeDetailFromSupabase(){
   app?.queueBadgeDetailStatFit?.();
   app?.syncRarityGradient?.(panel);
 }
-function showLogin(){
-  const o=modal('<h2>Log in</h2><p class="ca-sub">Log in to your Chordle account.</p><form><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Log In</button></div><div class="ca-msg"></div></form>');
+function loginFormMarkup(){
+  return '<h2>Sign in</h2><p class="ca-sub">Sign in to your Chordle account.</p><form><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Sign in</button></div><div class="ca-msg"></div></form>';
+}
+
+function signupFormMarkup(){
+  return '<h2>Create account</h2><p class="ca-sub">Create your Chordle account. If you just rolled a chord, it will be saved when you sign in.</p><form><div class="ca-field"><label>Username</label><input name="username" minlength="2" maxlength="24" autocomplete="username" required></div><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Create account</button></div><div class="ca-msg"></div></form>';
+}
+
+function showLogin(existingOverlay=null){
+  clearProfileLoginHighlight();
+  const o=existingOverlay||modal('');
+  o.classList.remove('ca-save-overlay');
+  setModalContent(o,loginFormMarkup());
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
   f.onsubmit=async e=>{
-    e.preventDefault();msg.textContent="Logging in…";
+    e.preventDefault();msg.textContent="Signing in…";
     const fd=new FormData(f);
     const {data,error}=await supabase.auth.signInWithPassword({email:String(fd.get("email")).trim(),password:String(fd.get("password"))});
     if(error){msg.textContent=error.message;return;}
-    state.session=data.session;await initializeSignedInUser(data.user);o.remove();renderProfile();
+    state.session=data.session;
+    await initializeSignedInUser(data.user);
+    o.remove();
+    renderProfile();
   };
+  return o;
 }
 
-function showSignup(){
-  const o=modal('<h2>Create account</h2><p class="ca-sub">Create your Chordle account.</p><form><div class="ca-field"><label>Username</label><input name="username" minlength="2" maxlength="24" autocomplete="username" required></div><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Create Account</button></div><div class="ca-msg"></div></form>');
+function showSignup(existingOverlay=null){
+  clearProfileLoginHighlight();
+  const o=existingOverlay||modal('');
+  o.classList.remove('ca-save-overlay');
+  setModalContent(o,signupFormMarkup());
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
   f.onsubmit=async e=>{
-    e.preventDefault();const fd=new FormData(f),uname=String(fd.get("username")).trim();
+    e.preventDefault();
+    const fd=new FormData(f),uname=String(fd.get("username")).trim();
+    msg.textContent="Creating account…";
     const {data,error}=await supabase.auth.signUp({email:String(fd.get("email")).trim(),password:String(fd.get("password")),options:{data:{username:uname}}});
     if(error){msg.textContent=error.message;return;}
-    if(data.session){state.session=data.session;await initializeSignedInUser(data.user);o.remove();renderProfile();}
-    else{msg.className="ca-msg ok";msg.textContent="Account created. Check your email to confirm it, then log in.";}
+    if(data.session){
+      state.session=data.session;
+      await initializeSignedInUser(data.user);
+      o.remove();
+      renderProfile();
+    }else{
+      msg.className="ca-msg ok";
+      msg.textContent="Account created. Check your email to confirm it, then sign in. Your chord is waiting to be saved.";
+    }
   };
+  return o;
+}
+
+function showAnonymousSavePrompt(){
+  if(state.session?.user)return;
+  const pending=captureAnonymousRoll();
+  if(!pending)return;
+  if(document.querySelector('.ca-save-overlay'))return;
+  if(state.anonymousPromptedDay===pending.roll_day)return;
+  state.anonymousPromptedDay=pending.roll_day;
+
+  const inner='<h2>Log on to save your chord</h2><p class="ca-sub">Sign in or create an account to keep this roll, its score, and its discovered badges.</p><div class="ca-save-choice"><button class="ca-btn" data-ca-save="signin">Sign in</button><button class="ca-btn ca-primary" data-ca-save="signup">Create account</button></div>';
+  const o=modal(inner,highlightProfileLogin);
+  o.classList.add('ca-save-overlay');
+  o.querySelector('[data-ca-save="signin"]').onclick=()=>showLogin(o);
+  o.querySelector('[data-ca-save="signup"]').onclick=()=>showSignup(o);
 }
 
 async function logout(){
@@ -920,15 +1075,31 @@ async function logout(){
 }
 
 async function initializeSignedInUser(user){
+  clearProfileLoginHighlight();
   await loadProfile(user,2);
   await syncOwnedBadgesToLocal();
   state.todayRoll=await getTodayRoll(user.id);
+
+  if(!state.todayRoll){
+    try{
+      const savedPending=await persistPendingAnonymousRoll();
+      if(savedPending){
+        state.todayRoll=savedPending;
+        await loadProfile(user,2);
+        await syncOwnedBadgesToLocal();
+      }
+    }catch(error){
+      console.warn('Chordle pending anonymous roll save:',error);
+    }
+  }
+
   if(state.todayRoll)restoreDailyRoll(state.todayRoll);
   else if(document.getElementById("nextChord")?.classList.contains("visible"))await persistCompletedRoll();
 }
 
 function wireNavigation(){
   document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
+    clearProfileLoginHighlight();
     e.preventDefault();e.stopImmediatePropagation();
     const target=profileHref(state.profile||state.session?.user?.id);
     if(location.hash===target)renderProfile();
@@ -968,7 +1139,9 @@ function wireRollCompletion(){
   const next=document.getElementById("nextChord");
   if(next){
     const observer=new MutationObserver(()=>{
-      if(next.classList.contains("visible")&&!state.restoring)setTimeout(persistCompletedRoll,0);
+      if(!next.classList.contains("visible")||state.restoring)return;
+      if(state.session?.user)setTimeout(persistCompletedRoll,0);
+      else setTimeout(showAnonymousSavePrompt,180);
     });
     observer.observe(next,{attributes:true,attributeFilter:["class"]});
   }
@@ -1005,6 +1178,9 @@ async function boot(){
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
+  if(!data.session?.user && document.getElementById("nextChord")?.classList.contains("visible")){
+    setTimeout(showAnonymousSavePrompt,250);
+  }
 
   if(renderInfoRoute()){}
   else if(location.hash.startsWith('#profile'))await renderProfile();
@@ -1035,4 +1211,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase};
