@@ -579,6 +579,66 @@ async function refreshBadgeExistCounts(){
   });
 }
 
+async function renderBadgeDetailFromSupabase(){
+  if(!location.hash.startsWith('#badges/'))return;
+  const app=nativeApp();
+  const badge=app?.getBadgeFromHash?.();
+  const panel=document.getElementById('badgeDetailPanel');
+  if(!badge||!panel)return;
+
+  const {data:owners,error}=await supabase.from('chordle_user_badges')
+    .select('user_id,discovered_at').eq('badge_key',String(badge.key)).order('discovered_at',{ascending:true});
+  if(error){console.warn('Chordle badge detail:',error.message);return;}
+  const rows=owners||[];
+  const exists=rows.length;
+  if(exists<=0){
+    panel.className='badge-detail-panel detail-undiscovered';
+    panel.innerHTML='<h1 class="badge-detail-undiscovered-title" id="badgeDetailTitle">This badge has not been discovered by anyone... yet...</h1>';
+    return;
+  }
+
+  const first=rows[0];
+  const firstProfile=first?.user_id?await fetchProfileTarget(first.user_id):null;
+  panel.className='badge-detail-panel detail-'+String(badge.rarity||'common').toLowerCase();
+  panel.replaceChildren();
+
+  const title=document.createElement('h1');
+  title.className='badge-detail-title';
+  title.id='badgeDetailTitle';
+  title.textContent=badge.name;
+  const divider=document.createElement('div');divider.className='badge-detail-divider';
+  const desc=document.createElement('p');desc.className='badge-detail-description';desc.textContent=badge.desc||'No description available.';
+
+  const stats=document.createElement('div');stats.className='badge-detail-stats';
+  const statDefs=[
+    ['Rarity',app?.badgeIndexLabel?.(badge.rarity)||titleCaseRarity(badge.rarity),'badge-detail-rarity-value'],
+    ['Probability',app?.formatBadgeProbability?.(badge.probability)||'—',''],
+    ['Score','+'+Number(badge.points||0).toLocaleString(),'badge-detail-score-value']
+  ];
+  for(const [label,value,extra] of statDefs){
+    const cell=document.createElement('div');cell.className='badge-detail-stat';
+    const l=document.createElement('div');l.className='badge-detail-stat-label';l.textContent=label;
+    const v=document.createElement('div');v.className=('badge-detail-stat-value '+extra).trim();v.textContent=value;
+    cell.append(l,v);stats.appendChild(cell);
+  }
+
+  const discoveryRow=document.createElement('div');discoveryRow.className='badge-detail-discovery';
+  const existCell=document.createElement('div');existCell.className='badge-detail-discovery-cell badge-detail-exists';
+  existCell.textContent=exists.toLocaleString()+' '+(exists===1?'Exists':'Exist');
+  const firstCell=document.createElement('div');firstCell.className='badge-detail-discovery-cell';
+  if(firstProfile){
+    firstCell.append(document.createTextNode('First discovered by\u00A0'));
+    const link=makeProfileLink(firstProfile,'badge-detail-profile-link');
+    const date=new Date(first.discovered_at);
+    firstCell.append(link,document.createTextNode('\u00A0on '+date.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'})));
+  }else{
+    firstCell.textContent='First discovery information unavailable.';
+  }
+  discoveryRow.append(existCell,firstCell);
+  panel.append(title,divider,desc,stats,discoveryRow);
+  app?.queueBadgeDetailStatFit?.();
+  app?.syncRarityGradient?.(panel);
+}
 function showLogin(){
   const o=modal('<h2>Log in</h2><p class="ca-sub">Log in to your Chordle account.</p><form><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Log In</button></div><div class="ca-msg"></div></form>');
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
@@ -618,22 +678,38 @@ async function initializeSignedInUser(user){
 }
 
 function wireNavigation(){
-  document.getElementById("profileNavBtn")?.addEventListener("click",e=>{
-    e.preventDefault();e.stopImmediatePropagation();applyRoute("profile");renderProfile();
+  document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopImmediatePropagation();
+    location.hash=profileHref(state.session?.user?.id);
+    setTimeout(renderProfile,0);
   },true);
 
-  document.getElementById("leaderboardNavBtn")?.addEventListener("click",e=>{
-    e.preventDefault();e.stopImmediatePropagation();applyRoute("leaderboard");renderLeaderboard("today");
+  document.getElementById('leaderboardNavBtn')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopImmediatePropagation();
+    location.hash='#leaderboard';
+    state.leaderboardTab='today';
+    setTimeout(()=>renderLeaderboard('today'),0);
   },true);
 
-  document.getElementById("leaderboardTabs")?.addEventListener("click",e=>{
-    const btn=e.target.closest(".leaderboard-tab");if(!btn)return;
-    e.preventDefault();e.stopImmediatePropagation();renderLeaderboard(btn.dataset.leaderboardTab||"today");
+  document.getElementById('leaderboardTabs')?.addEventListener('click',e=>{
+    const btn=e.target.closest('.leaderboard-tab');if(!btn)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    renderLeaderboard(btn.dataset.leaderboardTab||'today');
   },true);
 
-  document.getElementById("badgesNavBtn")?.addEventListener("click",()=>{
-    setTimeout(refreshBadgeExistCounts,80);setTimeout(refreshBadgeExistCounts,350);
+  document.getElementById('badgesNavBtn')?.addEventListener('click',()=>{
+    setTimeout(refreshBadgeExistCounts,80);
+    setTimeout(refreshBadgeExistCounts,350);
   },true);
+
+  window.addEventListener('hashchange',()=>{
+    setTimeout(()=>{
+      if(location.hash.startsWith('#profile'))renderProfile();
+      else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      else if(location.hash==='#badges')refreshBadgeExistCounts();
+      else if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
+    },0);
+  });
 }
 
 function wireRollCompletion(){
@@ -645,9 +721,10 @@ function wireRollCompletion(){
     observer.observe(next,{attributes:true,attributeFilter:["class"]});
   }
 
-  document.getElementById("revealBtn")?.addEventListener("click",()=>{
-    // A server row for today always wins over the local button.
+  document.getElementById('revealBtn')?.addEventListener('click',event=>{
     if(state.todayRoll){
+      event.preventDefault();
+      event.stopImmediatePropagation();
       restoreDailyRoll(state.todayRoll);
     }
   },true);
@@ -658,33 +735,46 @@ async function boot(){
   wireNavigation();
   wireRollCompletion();
 
+  document.addEventListener('click',event=>{
+    const control=document.getElementById('profileColorControl');
+    const menu=document.getElementById('profileColorMenu');
+    const button=document.getElementById('profileColorButton');
+    if(control && menu && !menu.hidden && !control.contains(event.target)){
+      menu.hidden=true;
+      button?.setAttribute('aria-expanded','false');
+    }
+  });
+
   const {data}=await supabase.auth.getSession();
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
+
+  if(location.hash.startsWith('#profile'))await renderProfile();
+  else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab);
+  else if(location.hash==='#badges')await refreshBadgeExistCounts();
+  else if(location.hash.startsWith('#badges/'))await renderBadgeDetailFromSupabase();
 
   supabase.auth.onAuthStateChange((_event,session)=>{
     setTimeout(async()=>{
       state.session=session;
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
-      if(location.hash.startsWith("#profile"))renderProfile();
-      if(location.hash==="#leaderboard")renderLeaderboard(state.leaderboardTab);
+      if(location.hash.startsWith('#profile'))renderProfile();
+      if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      if(location.hash==='#badges')refreshBadgeExistCounts();
+      if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
     },0);
   });
 
   setInterval(()=>{
     const day=localDayKey();
-    if(day!==state.dayKey){
-      // Midnight reset: reload the app so Generate Chord is available for the new day.
-      location.reload();
-      return;
-    }
-    if(location.hash==="#badges")refreshBadgeExistCounts();
+    if(day!==state.dayKey){location.reload();return;}
+    if(location.hash==='#badges')refreshBadgeExistCounts();
   },1000);
 }
 
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts};
+window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase};
