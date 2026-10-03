@@ -167,9 +167,55 @@ export default {
     return 'Earned when the roll satisfies Chordle\\'s “'+String(badge.name||'badge')+'” rule.';
   }
 
+  function chordleCreateIsolatedLeaderboardMiniPiano(notes,rarity){
+    const mini=createLeaderboardMiniPiano((notes||[]).map(Number),rarity);
+    mini.querySelectorAll('.key').forEach(key=>{
+      key.classList.remove('key');
+      key.classList.add('leaderboard-static-key');
+    });
+    return mini;
+  }
+
+  function chordleStopAllAudio(){
+    try{ stopRollPreview(); }catch{}
+    try{ stopAudio(); }catch{}
+  }
+
+  async function chordleStartExternalReplay(summary){
+    if(!summary || !Array.isArray(summary.notes) || summary.notes.length!==6) return false;
+    const notes=summary.notes.map(Number);
+    const badges=(Array.isArray(summary.badges) && summary.badges.length)
+      ? summary.badges
+      : [...analyze(notes),...wholeChordBadges(notes)];
+    const temporaryKeys=[];
+    try{
+      stopRollPreview();
+      stopAudio(true);
+
+      // Prevent another player's badges from ever rendering as "New" during a
+      // spectator replay. These keys are temporary and never written to storage.
+      for(const badge of badges){
+        if(badge?.special) continue;
+        const key=badgeSeenKey(badge);
+        if(!seenBadges.has(key)){
+          seenBadges.add(key);
+          temporaryKeys.push(key);
+        }
+      }
+
+      await reveal(notes,false);
+      return true;
+    }catch(error){
+      console.warn('Chordle external roll replay failed:',error);
+      return false;
+    }finally{
+      for(const key of temporaryKeys) seenBadges.delete(key);
+    }
+  }
+
   window.__CHORDLE_APP__={
     createRollCard:createMockRollCard,
-    createLeaderboardMiniPiano,
+    createLeaderboardMiniPiano:chordleCreateIsolatedLeaderboardMiniPiano,
     createLeaderboardRow,
     createLeaderboardMetricRow,
     createProfileBadgeRow,
@@ -188,6 +234,8 @@ export default {
     queueCompactBadgeTitleFit,
     scoreTier,
     stopRollPreview,
+    stopAllAudio:chordleStopAllAudio,
+    startExternalReplay:chordleStartExternalReplay,
     setOwnedBadgeKeys:keys=>{
       seenBadges.clear();
       for(const key of (keys||[])) seenBadges.add(String(key));
@@ -201,7 +249,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=leaderboard-first-share-pr10-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=daily-tags-roll-replay-pr11-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
