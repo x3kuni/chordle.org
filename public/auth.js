@@ -1006,19 +1006,24 @@ function canonicalRollAnalysis(notes){
   };
 }
 
-function captureAnonymousRoll(){
+function captureAnonymousRoll({requireComplete=true}={}){
   if(state.session?.user)return null;
   const notes=currentDailyNotes();
   const analysis=canonicalRollAnalysis(notes);
   const next=document.getElementById('nextChord');
-  if(!notes||!analysis||!next?.classList.contains('visible'))return null;
+  const complete=!!next?.classList.contains('visible');
+  if(!notes||!analysis||(requireComplete&&!complete))return null;
+
+  const previous=readJson(PENDING_ANON_ROLL_KEY);
   const pending={
     roll_day:localDayKey(),
     notes,
     score:analysis.score,
-    chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
-    chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
-    rarity:analysis.rarity
+    chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||previous?.chord_name||null,
+    chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||previous?.chord_detail||null,
+    rarity:analysis.rarity,
+    complete:complete||previous?.complete===true,
+    captured_at:Date.now()
   };
   writeJson(PENDING_ANON_ROLL_KEY,pending);
   return pending;
@@ -1038,22 +1043,34 @@ async function persistPendingAnonymousRoll(){
   if(!analysis)return null;
 
   let roll=await getTodayRoll();
-  if(!roll){
-    const payload={
-      user_id:state.session.user.id,
-      roll_day:pending.roll_day,
-      notes,
-      score:analysis.score,
-      chord_name:pending.chord_name||null,
-      chord_detail:pending.chord_detail||null,
-      rarity:analysis.rarity
-    };
-    const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
-    if(error){
-      roll=await getTodayRoll();
-      if(!roll)throw error;
-    }else roll=data;
+  if(roll){
+    // An account that already has today's official roll must never absorb
+    // badges from a different anonymous browser roll.
+    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+    return roll;
   }
+
+  const currentName=String(document.getElementById('chordName')?.textContent||'').trim()||null;
+  const currentDetail=String(document.getElementById('chordDetail')?.textContent||'').trim()||null;
+  const payload={
+    user_id:state.session.user.id,
+    roll_day:pending.roll_day,
+    notes,
+    score:analysis.score,
+    chord_name:pending.chord_name||currentName,
+    chord_detail:pending.chord_detail||currentDetail,
+    rarity:analysis.rarity
+  };
+  const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
+  if(error){
+    roll=await getTodayRoll();
+    if(roll){
+      try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+      return roll;
+    }
+    throw error;
+  }
+  roll=data;
 
   const badges=analysis.badges;
   if(roll&&badges.length){
@@ -1130,6 +1147,7 @@ async function persistCompletedRoll(){
     }
 
     state.todayRoll=roll;
+    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
     await loadProfile(state.session.user,2);
     await syncOwnedBadgesToLocal();
     await syncFirstDiscoveryTags({allowProvisional:false,all:true});
@@ -1354,7 +1372,7 @@ function mountProfileLikeControl(){
     control.id='profileLikeControl';
     control.className='profile-like-control';
     control.hidden=true;
-    control.innerHTML='<button type="button" class="profile-like-heart" aria-label="Like profile" title="Like profile">♡</button><span class="profile-like-count">0</span>';
+    control.innerHTML='<button type="button" class="profile-like-heart" aria-label="Like profile" title="Like profile">'+chordleHeartSvg()+'</button><span class="profile-like-count">0</span>';
     colorControl.insertAdjacentElement('afterend',control);
   }
   return control;
@@ -1367,12 +1385,12 @@ async function renderProfileLikeControl(targetProfile,ownProfile){
   const button=control.querySelector('.profile-like-heart');
   const countEl=control.querySelector('.profile-like-count');
 
-  control.hidden=!targetProfile||ownProfile;
+  control.hidden=!targetProfile;
   if(control.hidden)return;
 
   const uid=state.session?.user?.id||null;
   const countPromise=supabase.from('chordle_profile_likes').select('*',{count:'exact',head:true}).eq('profile_id',targetProfile.id);
-  const likedPromise=uid
+  const likedPromise=(uid&&!ownProfile)
     ?supabase.from('chordle_profile_likes').select('profile_id').eq('profile_id',targetProfile.id).eq('liker_id',uid).maybeSingle()
     :Promise.resolve({data:null,error:null});
   const [countResult,likedResult]=await Promise.all([countPromise,likedPromise]);
@@ -1382,18 +1400,24 @@ async function renderProfileLikeControl(targetProfile,ownProfile){
 
   let count=Math.max(0,Number(countResult.count)||0);
   let liked=!!likedResult.data;
+  button.disabled=!!ownProfile;
+  button.classList.toggle('is-count-display',!!ownProfile);
+
   const paint=()=>{
-    button.textContent=liked?'♥':'♡';
-    button.classList.toggle('is-liked',liked);
-    button.setAttribute('aria-label',liked?'Unlike profile':'Like profile');
-    button.title=liked?'Unlike profile':'Like profile';
+    button.classList.toggle('is-liked',!ownProfile&&liked);
+    button.setAttribute('aria-label',ownProfile?(String(count)+' profile likes'):(liked?'Unlike profile':'Like profile'));
+    button.title=ownProfile?(String(count)+' profile likes'):(liked?'Unlike profile':'Like profile');
     countEl.textContent=String(count);
   };
   paint();
 
+  if(ownProfile){
+    button.onclick=null;
+    return;
+  }
+
   button.onclick=async()=>{
     if(!state.session?.user){showLogin();return;}
-    if(state.session.user.id===targetProfile.id)return;
     button.disabled=true;
     try{
       if(liked){
