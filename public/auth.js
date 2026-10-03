@@ -3,6 +3,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = "https://cpfmiszujdyrtadqtdbj.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7KPZYtjYmFP0oXAVkE3KOw_VpTVXsGh";
 
+window.__CHORDLE_SUPABASE_OWNS_UI__=true;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
@@ -23,6 +25,7 @@ const state = {
 };
 
 const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
+const PROFILE_NAME_COLORS={white:"#f4f5f7",red:"#ff6262",orange:"#ff9f43",yellow:"#ffd84d",green:"#62d58b",blue:"#5ea7ff",purple:"#aa79ff",pink:"#ff72c6"};
 
 const style=document.createElement("style");
 style.textContent=`
@@ -63,6 +66,66 @@ function joined(v){if(!v)return "Joined —";const d=new Date(v);return Number.i
 function readJson(key){try{return JSON.parse(localStorage.getItem(key)||"null");}catch{return null;}}
 function writeJson(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}
 function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0-9.-]/g,""));return Number.isFinite(n)?n:0;}
+
+function nativeApp(){return window.__CHORDLE_APP__||null;}
+function titleCaseRarity(v){return String(v||'common').replace(/-/g,' ').replace(/\\b\\w/g,m=>m.toUpperCase());}
+function applyNameColor(el,value,userId=''){
+  if(!el)return;
+  el.dataset.profileId=String(userId||'');
+  el.classList.remove('adaptive-name-color','custom-name-color');
+  el.style.removeProperty('--account-name-color');
+  const chosen=color(value);
+  if(!chosen || chosen.toLowerCase()==='#ffffff' || chosen.toLowerCase()==='#f4f5f7'){
+    el.classList.add('adaptive-name-color');
+  }else{
+    el.classList.add('custom-name-color');
+    el.style.setProperty('--account-name-color',chosen);
+  }
+}
+function profileHref(id){return id?'#profile/'+encodeURIComponent(id):'#profile';}
+function makeProfileLink(profile,extraClass='mock-profile-link'){
+  const a=document.createElement('a');
+  a.className=extraClass;
+  a.href=profileHref(profile?.id);
+  a.textContent=profile?.username||'Player';
+  applyNameColor(a,profile?.name_color,profile?.id);
+  return a;
+}
+function profileTargetFromHash(){
+  const hash=location.hash||'';
+  if(!hash.startsWith('#profile/'))return state.session?.user?.id||null;
+  try{return decodeURIComponent(hash.slice(9))||state.session?.user?.id||null;}catch{return state.session?.user?.id||null;}
+}
+async function fetchProfileTarget(target){
+  if(!target)return null;
+  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(target));
+  let q=supabase.from('profiles').select('id,username,name_color,lifetime_score,joined_at');
+  q=isUuid?q.eq('id',target):q.eq('username',target);
+  const {data,error}=await q.maybeSingle();
+  if(error){console.warn('Chordle profile lookup:',error.message);return null;}
+  return data||null;
+}
+function rollSummary(roll){
+  if(!roll||!Array.isArray(roll.notes))return null;
+  const notes=roll.notes.map(Number);
+  const badges=badgeObjectsForNotes(notes);
+  const total=Math.max(0,Math.round(Number(roll.score)||0));
+  const tier=nativeApp()?.scoreTier?.(total);
+  return {
+    notes,badges,score:total,
+    rarity:String(roll.rarity||tier?.id||'common').toLowerCase(),
+    rarityLabel:tier?.label||titleCaseRarity(roll.rarity),
+    chordName:roll.chord_name||'Chord',
+    chordDetail:roll.chord_detail||''
+  };
+}
+function patchRenderedProfileLink(root,profile){
+  const a=root?.querySelector?.('.mock-profile-link');
+  if(!a||!profile)return;
+  a.href=profileHref(profile.id);
+  a.textContent=profile.username||'Player';
+  applyNameColor(a,profile.name_color,profile.id);
+}
 
 function modal(inner){
   const o=document.createElement("div");o.className="ca-overlay";
@@ -147,14 +210,12 @@ async function getOwnedBadges(userId){
 
 async function syncOwnedBadgesToLocal(){
   const uid=state.session?.user?.id;
-  if(!uid)return;
+  if(!uid)return [];
   const owned=await getOwnedBadges(uid);
-  try{
-    const old=JSON.parse(localStorage.getItem(SEEN_BADGES_KEY)||"[]");
-    const merged=new Set(Array.isArray(old)?old:[]);
-    owned.forEach(b=>merged.add(String(b.badge_key)));
-    localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify([...merged]));
-  }catch{}
+  const keys=owned.map(b=>String(b.badge_key));
+  try{localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify(keys));}catch{}
+  nativeApp()?.setOwnedBadgeKeys?.(keys);
+  return owned;
 }
 
 function currentDailyNotes(){
@@ -178,8 +239,8 @@ function badgeObjectsForNotes(notes){
 
 async function persistCompletedRoll(){
   if(state.restoring||state.persisting||!state.session?.user)return;
-  const next=document.getElementById("nextChord");
-  if(!next?.classList.contains("visible"))return;
+  const next=document.getElementById('nextChord');
+  if(!next?.classList.contains('visible'))return;
   const notes=currentDailyNotes();
   if(!notes)return;
 
@@ -187,50 +248,52 @@ async function persistCompletedRoll(){
   try{
     let roll=await getTodayRoll();
     if(!roll){
-      const total=numericText(document.getElementById("score"));
+      const total=numericText(document.getElementById('score'));
       if(total<=0)return;
       const payload={
         user_id:state.session.user.id,
         roll_day:localDayKey(),
         notes,
         score:Math.round(total),
-        chord_name:String(document.getElementById("chordName")?.textContent||"").trim()||null,
-        chord_detail:String(document.getElementById("chordDetail")?.textContent||"").trim()||null,
+        chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
+        chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
         rarity:currentRarityId()
       };
-      const {data,error}=await supabase.from("chordle_rolls").insert(payload).select("*").single();
+      const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
       if(error){
         roll=await getTodayRoll();
         if(!roll)throw error;
-      }else{
-        roll=data;
-      }
+      }else roll=data;
+    }
 
-      const badges=badgeObjectsForNotes(notes);
-      if(roll&&badges.length){
-        const rows=badges.map(b=>({
-          roll_id:roll.id,
-          user_id:state.session.user.id,
-          badge_key:String(b.key||b.name||"unknown"),
-          badge_name:String(b.name||"Badge"),
-          badge_description:String(b.desc||""),
-          rarity:String(b.rarity||"common").toLowerCase(),
-          points:Math.max(0,Math.round(Number(b.points)||0)),
-          special:!!b.special
-        }));
-        const {error:badgeError}=await supabase.from("chordle_roll_badges").insert(rows);
-        if(badgeError)console.warn("Chordle badge save:",badgeError.message);
+    const badges=badgeObjectsForNotes(notes);
+    if(roll&&badges.length){
+      const existing=await getRollBadges(roll.id);
+      const existingKeys=new Set(existing.map(b=>String(b.badge_key)));
+      const rows=badges.filter(b=>!existingKeys.has(String(b.key||b.name||'unknown'))).map(b=>({
+        roll_id:roll.id,
+        user_id:state.session.user.id,
+        badge_key:String(b.key||b.name||'unknown'),
+        badge_name:String(b.name||'Badge'),
+        badge_description:String(b.desc||''),
+        rarity:String(b.rarity||'common').toLowerCase(),
+        points:Math.max(0,Math.round(Number(b.points)||0)),
+        special:!!b.special
+      }));
+      if(rows.length){
+        const {error:badgeError}=await supabase.from('chordle_roll_badges').insert(rows);
+        if(badgeError)console.warn('Chordle badge save:',badgeError.message);
       }
     }
 
     state.todayRoll=roll;
     await loadProfile(state.session.user,2);
     await syncOwnedBadgesToLocal();
-    if(location.hash==="#leaderboard")await renderLeaderboard();
+    if(location.hash==='#leaderboard')await renderLeaderboard();
     await refreshBadgeExistCounts();
-    if(location.hash.startsWith("#profile"))await renderProfile();
+    if(location.hash.startsWith('#profile'))await renderProfile();
   }catch(err){
-    console.warn("Chordle roll persistence:",err);
+    console.warn('Chordle roll persistence:',err);
   }finally{
     state.persisting=false;
   }
@@ -254,64 +317,19 @@ function renderRestoredBadge(badge,notes){
 }
 
 function restoreDailyRoll(roll){
-  if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return;
+  if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return false;
+  const summary=rollSummary(roll);
+  if(!summary)return false;
   state.restoring=true;
   try{
-    const notes=roll.notes.map(Number);
-    writeJson(DAILY_LOCAL_KEY,{day:roll.roll_day,notes});
+    writeJson(DAILY_LOCAL_KEY,{day:roll.roll_day,notes:summary.notes});
     try{
       localStorage.setItem(LIFETIME_DAY_KEY,roll.roll_day);
       if(state.profile)localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(Number(state.profile.lifetime_score)||0)));
     }catch{}
-
-    const slots=document.getElementById("noteSlots");
-    if(slots){
-      if(slots.children.length!==6){
-        slots.innerHTML="";
-        for(let i=0;i<6;i++){const d=document.createElement("div");d.className="note-pill";slots.appendChild(d);}
-      }
-      [...slots.children].forEach((pill,i)=>{
-        pill.className="note-pill revealed";
-        pill.textContent=noteName(notes[i]);
-      });
-    }
-
-    const chordName=document.getElementById("chordName");
-    const chordDetail=document.getElementById("chordDetail");
-    if(chordName)chordName.textContent=roll.chord_name||"Today's chord";
-    if(chordDetail)chordDetail.textContent=roll.chord_detail||"Your chord has already been generated today.";
-
-    const scoreEl=document.getElementById("score");
-    const rarityEl=document.getElementById("scoreRarity");
-    if(scoreEl)scoreEl.textContent=formatScore(roll.score);
-    if(rarityEl)rarityEl.textContent=String(roll.rarity||"").replace(/-/g," ").replace(/\b\w/g,m=>m.toUpperCase());
-
-    document.getElementById("chordCard")?.classList.add("metadata-visible");
-    document.getElementById("scoreBox")?.classList.add("metadata-visible");
-    const scoreBox=document.getElementById("scoreBox");
-    if(scoreBox&&roll.rarity)scoreBox.classList.add("rarity-"+String(roll.rarity).toLowerCase());
-
-    const badgesEl=document.getElementById("badges");
-    if(badgesEl){
-      badgesEl.replaceChildren();
-      badgeObjectsForNotes(notes).forEach(b=>badgesEl.appendChild(renderRestoredBadge(b,notes)));
-    }
-
-    document.querySelectorAll(".key").forEach(k=>k.classList.remove("rolled","pending-roll","reveal-accent"));
-    notes.forEach(n=>document.querySelectorAll(`.key[data-note="${n}"]`).forEach(k=>k.classList.add("rolled")));
-
-    const next=document.getElementById("nextChord");
-    next?.classList.add("visible");
-    const revealBtn=document.getElementById("revealBtn");
-    if(revealBtn){
-      revealBtn.disabled=true;
-      revealBtn.textContent="Today's chord complete";
-    }
-    const reroll=document.getElementById("rerollBtn");
-    if(reroll)reroll.disabled=true;
-    const audio=document.getElementById("audioBtn");
-    if(audio)audio.disabled=true;
+    const restored=nativeApp()?.restoreCompletedRoll?.(summary);
     syncLifetimeDisplay();
+    return restored!==false;
   }finally{
     setTimeout(()=>{state.restoring=false;},0);
   }
@@ -340,59 +358,116 @@ function mountAccountControls(){
 }
 
 function renderBestRoll(best){
-  const el=document.getElementById("profileBestRoll");
+  const el=document.getElementById('profileBestRoll');
   if(!el)return;
+  el.replaceChildren();
   if(!best){
     el.innerHTML='<div class="profile-badges-empty">No completed rolls yet.</div>';
     return;
   }
-  el.innerHTML=`<div class="ca-best-roll"><div class="ca-best-roll-name">${esc(best.chord_name||"Chord")}</div><div class="ca-best-roll-meta">${formatScore(best.score)} points · ${esc(String(best.rarity||"").replace(/-/g," "))}</div></div>`;
+  const summary=rollSummary(best);
+  const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
+  if(card){
+    el.appendChild(card);
+    nativeApp()?.queueMockScoreFit?.(el);
+  }else{
+    el.innerHTML='<div class="profile-badges-empty">Unable to render this roll.</div>';
+  }
 }
 
 function renderTopBadges(rows){
-  const el=document.getElementById("profileTopBadges");
+  const el=document.getElementById('profileTopBadges');
   if(!el)return;
   el.replaceChildren();
   if(!rows.length){
     el.innerHTML='<div class="profile-badges-empty">No collectible badges yet.</div>';
     return;
   }
-  rows.slice(0,10).forEach(b=>{
-    const row=document.createElement("div");
-    row.className=`badge-index-row badge ${String(b.rarity||"common").toLowerCase()}`;
-    row.innerHTML=`<div class="badge-index-row-name badge-name">${esc(b.badge_name)}</div><div class="badge-index-row-score points">+${formatScore(b.points)}</div>`;
-    el.appendChild(row);
-  });
+  for(const saved of rows.slice(0,10)){
+    const catalog=nativeApp()?.getCatalogBadgeByKey?.(String(saved.badge_key));
+    const badge=catalog||{
+      key:String(saved.badge_key),
+      name:saved.badge_name||'Badge',
+      desc:saved.badge_description||'',
+      rarity:String(saved.rarity||'common').toLowerCase(),
+      points:Number(saved.points)||0
+    };
+    const row=nativeApp()?.createProfileBadgeRow?.(badge);
+    if(row)el.appendChild(row);
+  }
+  nativeApp()?.queueCompactBadgeTitleFit?.(el);
+}
+
+function bindProfileColorControl(targetProfile,ownProfile){
+  const control=document.getElementById('profileColorControl');
+  const button=document.getElementById('profileColorButton');
+  const fill=document.getElementById('profileColorFill');
+  const menu=document.getElementById('profileColorMenu');
+  if(!control||!button||!fill||!menu)return;
+  control.hidden=!ownProfile;
+  if(!ownProfile){menu.hidden=true;button.setAttribute('aria-expanded','false');return;}
+
+  const current=color(targetProfile?.name_color)||PROFILE_NAME_COLORS.white;
+  fill.style.setProperty('--profile-color-fill',current);
+  menu.replaceChildren();
+  for(const [key,value] of Object.entries(PROFILE_NAME_COLORS)){
+    const option=document.createElement('button');
+    option.type='button';
+    option.className='profile-color-option';
+    option.dataset.colorKey=key;
+    option.style.setProperty('--option-color',value);
+    option.title=key[0].toUpperCase()+key.slice(1);
+    option.setAttribute('aria-label',option.title+' username');
+    option.classList.toggle('selected',value.toLowerCase()===current.toLowerCase());
+    option.addEventListener('click',async event=>{
+      event.stopPropagation();
+      const uid=state.session?.user?.id;
+      if(!uid)return;
+      const {data,error}=await supabase.from('profiles').update({name_color:value}).eq('id',uid).select('id,username,name_color,lifetime_score,joined_at').single();
+      if(error){console.warn('Chordle name color:',error.message);return;}
+      state.profile=data;
+      fill.style.setProperty('--profile-color-fill',value);
+      document.querySelectorAll('[data-profile-id="'+CSS.escape(uid)+'"]').forEach(el=>applyNameColor(el,value,uid));
+      applyNameColor(document.getElementById('profileName'),value,uid);
+      menu.hidden=true;
+      button.setAttribute('aria-expanded','false');
+    });
+    menu.appendChild(option);
+  }
+
 }
 
 async function renderProfile(){
   unlockExistingPages();
   mountAccountControls();
 
-  const nameEl=document.getElementById("profileName");
-  const joinEl=document.getElementById("profileJoinDate");
-  const lifetimeEl=document.getElementById("profileLifetimeScore");
-  const colorControl=document.getElementById("profileColorControl");
-  const user=state.session?.user;
+  const nameEl=document.getElementById('profileName');
+  const joinEl=document.getElementById('profileJoinDate');
+  const lifetimeEl=document.getElementById('profileLifetimeScore');
+  const targetKey=profileTargetFromHash();
+  const target=targetKey?await fetchProfileTarget(targetKey):null;
+  const ownProfile=!!(target?.id && state.session?.user?.id===target.id);
 
-  if(!user){
-    if(nameEl){nameEl.textContent="Profile";nameEl.style.color="";}
-    if(joinEl)joinEl.textContent="Log in or create an account to view your profile";
-    if(lifetimeEl)lifetimeEl.textContent="—";
-    if(colorControl)colorControl.hidden=true;
-    renderBestRoll(null);renderTopBadges([]);
+  if(!target){
+    if(nameEl){nameEl.textContent='Profile';nameEl.classList.add('adaptive-name-color');nameEl.style.removeProperty('--account-name-color');}
+    if(joinEl)joinEl.textContent=state.session?.user?'Profile unavailable':'Log in or create an account to view your profile';
+    if(lifetimeEl)lifetimeEl.textContent='—';
+    bindProfileColorControl(null,false);
+    renderBestRoll(null);
+    renderTopBadges([]);
+    mountAccountControls();
     return;
   }
 
-  await loadProfile(user,1);
-  if(nameEl){nameEl.textContent=username(user);nameEl.style.color=color(state.profile?.name_color);}
-  if(joinEl)joinEl.textContent=joined(state.profile?.joined_at||user.created_at);
-  if(lifetimeEl)lifetimeEl.textContent=formatScore(state.profile?.lifetime_score);
-  if(colorControl)colorControl.hidden=true;
+  if(ownProfile)state.profile=target;
+  if(nameEl){nameEl.textContent=target.username||'Player';applyNameColor(nameEl,target.name_color,target.id);}
+  if(joinEl)joinEl.textContent=joined(target.joined_at);
+  if(lifetimeEl)lifetimeEl.textContent=formatScore(target.lifetime_score);
+  bindProfileColorControl(target,ownProfile);
 
   const [{data:best},{data:badges}]=await Promise.all([
-    supabase.from("chordle_rolls").select("*").eq("user_id",user.id).order("score",{ascending:false}).limit(1).maybeSingle(),
-    supabase.from("chordle_user_badges").select("*").eq("user_id",user.id).order("points",{ascending:false}).limit(10)
+    supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
+    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false}).limit(10)
   ]);
   renderBestRoll(best||null);
   renderTopBadges(badges||[]);
@@ -416,62 +491,131 @@ async function profileMapFor(ids){
   return new Map((data||[]).map(p=>[p.id,p]));
 }
 
+function renderedLeaderboardRow(profile,rank,summary){
+  const account={id:profile.id,name:profile.username||'Player'};
+  const row=nativeApp()?.createLeaderboardRow?.(account,rank,summary);
+  if(row)patchRenderedProfileLink(row,profile);
+  return row;
+}
+
+function renderedMetricRow(profile,rank,valueText){
+  const account={id:profile.id,name:profile.username||'Player'};
+  const row=nativeApp()?.createLeaderboardMetricRow?.(account,rank,valueText);
+  if(row)patchRenderedProfileLink(row,profile);
+  return row;
+}
+
+async function fetchTodayRolls(){
+  const {data,error}=await supabase.from('chordle_rolls').select('*').eq('roll_day',localDayKey()).order('score',{ascending:false}).limit(100);
+  if(error){console.warn('Chordle today leaderboard:',error.message);return [];}
+  return data||[];
+}
+
+async function bestRollsByUser(desc=true){
+  const {data,error}=await supabase.from('chordle_rolls').select('*').order('score',{ascending:!desc}).limit(5000);
+  if(error){console.warn('Chordle roll ranking:',error.message);return [];}
+  const first=new Map();
+  for(const roll of (data||[]))if(!first.has(roll.user_id))first.set(roll.user_id,roll);
+  return [...first.values()];
+}
+
 async function renderLeaderboard(tab=state.leaderboardTab){
   unlockExistingPages();
-  state.leaderboardTab=tab||"today";
-  const list=document.getElementById("leaderboardList");
-  const winner=document.getElementById("leaderboardWinner");
-  const date=document.getElementById("leaderboardDate");
-  const title=document.getElementById("leaderboardTitle");
-  if(!list)return;
-  list.replaceChildren();winner?.replaceChildren();
+  state.leaderboardTab=tab||'today';
+  const list=document.getElementById('leaderboardList');
+  const winnerEl=document.getElementById('leaderboardWinner');
+  const dateEl=document.getElementById('leaderboardDate');
+  const titleEl=document.getElementById('leaderboardTitle');
+  if(!list||!winnerEl)return;
 
-  let rows=[];
-  if(state.leaderboardTab==="alltime"){
-    const {data}=await supabase.from("profiles").select("id,username,name_color,lifetime_score").order("lifetime_score",{ascending:false}).limit(100);
-    rows=(data||[]).map(p=>({profile:p,value:formatScore(p.lifetime_score)+" lifetime"}));
-    if(title)title.textContent="All-Time Leaderboard";
-    if(date)date.textContent="Lifetime score";
-  }else if(state.leaderboardTab==="today"){
-    const {data}=await supabase.from("chordle_rolls").select("user_id,score,chord_name,rarity").eq("roll_day",localDayKey()).order("score",{ascending:false}).limit(100);
-    const rolls=data||[], map=await profileMapFor(rolls.map(r=>r.user_id));
-    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
-    if(title)title.textContent="Today's Leaderboard";
-    if(date)date.textContent=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
-  }else if(state.leaderboardTab==="lowest"){
-    const {data}=await supabase.from("chordle_rolls").select("user_id,score").order("score",{ascending:true}).limit(1000);
-    const first=new Map();for(const r of (data||[]))if(!first.has(r.user_id))first.set(r.user_id,r);
-    const rolls=[...first.values()].slice(0,100), map=await profileMapFor(rolls.map(r=>r.user_id));
-    rows=rolls.map(r=>({profile:map.get(r.user_id)||{id:r.user_id,username:"Player"},value:formatScore(r.score)+" points"}));
-    if(title)title.textContent="Lowest Rolls";
-    if(date)date.textContent="Lowest recorded official roll";
-  }else if(state.leaderboardTab==="badges"){
-    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key");
-    const counts=new Map();for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
-    const ids=[...counts.keys()], map=await profileMapFor(ids);
-    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" badges"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
-    if(title)title.textContent="Most Badges";
-    if(date)date.textContent="Unique collectible badges owned";
-  }else if(state.leaderboardTab==="discovered"){
-    const {data}=await supabase.from("chordle_user_badges").select("user_id,badge_key,discovered_at").order("discovered_at",{ascending:true});
-    const firstByBadge=new Map();for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
-    const counts=new Map();for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
-    const ids=[...counts.keys()], map=await profileMapFor(ids);
-    rows=ids.map(id=>({profile:map.get(id)||{id,username:"Player"},value:counts.get(id).toLocaleString()+" discovered"})).sort((a,b)=>Number(b.value.split(" ")[0].replace(/,/g,""))-Number(a.value.split(" ")[0].replace(/,/g,""))).slice(0,100);
-    if(title)title.textContent="Most Discovered";
-    if(date)date.textContent="First global badge discoveries";
-  }
+  list.replaceChildren();
+  winnerEl.replaceChildren();
+  if(titleEl)titleEl.textContent="Today's Leaderboard";
+  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  if(!rows.length){
-    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  const todayRolls=await fetchTodayRolls();
+  const todayProfiles=await profileMapFor(todayRolls.map(r=>r.user_id));
+  const winner=todayRolls[0]||null;
+  if(winner){
+    const profile=todayProfiles.get(winner.user_id)||{id:winner.user_id,username:'Player',name_color:'#ffffff'};
+    const summary=rollSummary(winner);
+    const rank=document.createElement('div');
+    rank.className='leaderboard-winner-rank';
+    rank.textContent='#1 Today';
+    const card=summary?nativeApp()?.createRollCard?.(summary,{winner:true,showRarity:false}):null;
+    const by=document.createElement('div');
+    by.className='leaderboard-winner-by';
+    by.append('Rolled by ',makeProfileLink(profile));
+    winnerEl.append(rank);
+    if(card)winnerEl.appendChild(card);
+    winnerEl.appendChild(by);
   }else{
-    rows.forEach((row,i)=>list.appendChild(makeLeaderboardRow(i+1,row.profile.username,row.value,row.profile.name_color,"#profile/"+encodeURIComponent(row.profile.username||row.profile.id))));
+    const empty=document.createElement('div');
+    empty.className='profile-badges-empty';
+    empty.textContent='No rolls have been completed today.';
+    winnerEl.appendChild(empty);
   }
 
-  document.getElementById("leaderboardTabs")?.querySelectorAll(".leaderboard-tab").forEach(btn=>{
+  if(state.leaderboardTab==='today'){
+    todayRolls.slice(1).forEach((roll,index)=>{
+      const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='alltime'){
+    const rolls=await bestRollsByUser(true);
+    const profiles=await profileMapFor(rolls.map(r=>r.user_id));
+    rolls.forEach((roll,index)=>{
+      const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='lowest'){
+    const rolls=await bestRollsByUser(false);
+    const profiles=await profileMapFor(rolls.map(r=>r.user_id));
+    rolls.forEach((roll,index)=>{
+      const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
+      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='badges'){
+    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
+    const counts=new Map();
+    for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
+    const ids=[...counts.keys()];
+    const profiles=await profileMapFor(ids);
+    const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
+      .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
+    ranked.forEach((entry,index)=>{
+      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges');
+      if(row)list.appendChild(row);
+    });
+  }else if(state.leaderboardTab==='discovered'){
+    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
+    const firstByBadge=new Map();
+    for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
+    const counts=new Map();
+    for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
+    const ids=[...counts.keys()];
+    const profiles=await profileMapFor(ids);
+    const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
+      .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
+    ranked.forEach((entry,index)=>{
+      const row=renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' discovered');
+      if(row)list.appendChild(row);
+    });
+  }
+
+  if(!list.children.length){
+    list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
+  }
+
+  document.getElementById('leaderboardTabs')?.querySelectorAll('.leaderboard-tab').forEach(btn=>{
     const active=btn.dataset.leaderboardTab===state.leaderboardTab;
-    btn.classList.toggle("active",active);btn.setAttribute("aria-selected",active?"true":"false");
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-selected',active?'true':'false');
   });
+  nativeApp()?.queueMockScoreFit?.(document);
 }
 
 async function refreshBadgeExistCounts(){
@@ -492,6 +636,66 @@ async function refreshBadgeExistCounts(){
   });
 }
 
+async function renderBadgeDetailFromSupabase(){
+  if(!location.hash.startsWith('#badges/'))return;
+  const app=nativeApp();
+  const badge=app?.getBadgeFromHash?.();
+  const panel=document.getElementById('badgeDetailPanel');
+  if(!badge||!panel)return;
+
+  const {data:owners,error}=await supabase.from('chordle_user_badges')
+    .select('user_id,discovered_at').eq('badge_key',String(badge.key)).order('discovered_at',{ascending:true});
+  if(error){console.warn('Chordle badge detail:',error.message);return;}
+  const rows=owners||[];
+  const exists=rows.length;
+  if(exists<=0){
+    panel.className='badge-detail-panel detail-undiscovered';
+    panel.innerHTML='<h1 class="badge-detail-undiscovered-title" id="badgeDetailTitle">This badge has not been discovered by anyone... yet...</h1>';
+    return;
+  }
+
+  const first=rows[0];
+  const firstProfile=first?.user_id?await fetchProfileTarget(first.user_id):null;
+  panel.className='badge-detail-panel detail-'+String(badge.rarity||'common').toLowerCase();
+  panel.replaceChildren();
+
+  const title=document.createElement('h1');
+  title.className='badge-detail-title';
+  title.id='badgeDetailTitle';
+  title.textContent=badge.name;
+  const divider=document.createElement('div');divider.className='badge-detail-divider';
+  const desc=document.createElement('p');desc.className='badge-detail-description';desc.textContent=badge.desc||'No description available.';
+
+  const stats=document.createElement('div');stats.className='badge-detail-stats';
+  const statDefs=[
+    ['Rarity',app?.badgeIndexLabel?.(badge.rarity)||titleCaseRarity(badge.rarity),'badge-detail-rarity-value'],
+    ['Probability',app?.formatBadgeProbability?.(badge.probability)||'—',''],
+    ['Score','+'+Number(badge.points||0).toLocaleString(),'badge-detail-score-value']
+  ];
+  for(const [label,value,extra] of statDefs){
+    const cell=document.createElement('div');cell.className='badge-detail-stat';
+    const l=document.createElement('div');l.className='badge-detail-stat-label';l.textContent=label;
+    const v=document.createElement('div');v.className=('badge-detail-stat-value '+extra).trim();v.textContent=value;
+    cell.append(l,v);stats.appendChild(cell);
+  }
+
+  const discoveryRow=document.createElement('div');discoveryRow.className='badge-detail-discovery';
+  const existCell=document.createElement('div');existCell.className='badge-detail-discovery-cell badge-detail-exists';
+  existCell.textContent=exists.toLocaleString()+' '+(exists===1?'Exists':'Exist');
+  const firstCell=document.createElement('div');firstCell.className='badge-detail-discovery-cell';
+  if(firstProfile){
+    firstCell.append(document.createTextNode('First discovered by\u00A0'));
+    const link=makeProfileLink(firstProfile,'badge-detail-profile-link');
+    const date=new Date(first.discovered_at);
+    firstCell.append(link,document.createTextNode('\u00A0on '+date.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'})));
+  }else{
+    firstCell.textContent='First discovery information unavailable.';
+  }
+  discoveryRow.append(existCell,firstCell);
+  panel.append(title,divider,desc,stats,discoveryRow);
+  app?.queueBadgeDetailStatFit?.();
+  app?.syncRarityGradient?.(panel);
+}
 function showLogin(){
   const o=modal('<h2>Log in</h2><p class="ca-sub">Log in to your Chordle account.</p><form><div class="ca-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="ca-field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div><div class="ca-actions"><button class="ca-btn ca-primary" type="submit">Log In</button></div><div class="ca-msg"></div></form>');
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
@@ -531,22 +735,38 @@ async function initializeSignedInUser(user){
 }
 
 function wireNavigation(){
-  document.getElementById("profileNavBtn")?.addEventListener("click",e=>{
-    e.preventDefault();e.stopImmediatePropagation();applyRoute("profile");renderProfile();
+  document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopImmediatePropagation();
+    location.hash=profileHref(state.session?.user?.id);
+    setTimeout(renderProfile,0);
   },true);
 
-  document.getElementById("leaderboardNavBtn")?.addEventListener("click",e=>{
-    e.preventDefault();e.stopImmediatePropagation();applyRoute("leaderboard");renderLeaderboard("today");
+  document.getElementById('leaderboardNavBtn')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopImmediatePropagation();
+    location.hash='#leaderboard';
+    state.leaderboardTab='today';
+    setTimeout(()=>renderLeaderboard('today'),0);
   },true);
 
-  document.getElementById("leaderboardTabs")?.addEventListener("click",e=>{
-    const btn=e.target.closest(".leaderboard-tab");if(!btn)return;
-    e.preventDefault();e.stopImmediatePropagation();renderLeaderboard(btn.dataset.leaderboardTab||"today");
+  document.getElementById('leaderboardTabs')?.addEventListener('click',e=>{
+    const btn=e.target.closest('.leaderboard-tab');if(!btn)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    renderLeaderboard(btn.dataset.leaderboardTab||'today');
   },true);
 
-  document.getElementById("badgesNavBtn")?.addEventListener("click",()=>{
-    setTimeout(refreshBadgeExistCounts,80);setTimeout(refreshBadgeExistCounts,350);
+  document.getElementById('badgesNavBtn')?.addEventListener('click',()=>{
+    setTimeout(refreshBadgeExistCounts,80);
+    setTimeout(refreshBadgeExistCounts,350);
   },true);
+
+  window.addEventListener('hashchange',()=>{
+    setTimeout(()=>{
+      if(location.hash.startsWith('#profile'))renderProfile();
+      else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      else if(location.hash==='#badges')refreshBadgeExistCounts();
+      else if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
+    },0);
+  });
 }
 
 function wireRollCompletion(){
@@ -558,9 +778,10 @@ function wireRollCompletion(){
     observer.observe(next,{attributes:true,attributeFilter:["class"]});
   }
 
-  document.getElementById("revealBtn")?.addEventListener("click",()=>{
-    // A server row for today always wins over the local button.
+  document.getElementById('revealBtn')?.addEventListener('click',event=>{
     if(state.todayRoll){
+      event.preventDefault();
+      event.stopImmediatePropagation();
       restoreDailyRoll(state.todayRoll);
     }
   },true);
@@ -571,33 +792,46 @@ async function boot(){
   wireNavigation();
   wireRollCompletion();
 
+  document.addEventListener('click',event=>{
+    const control=document.getElementById('profileColorControl');
+    const menu=document.getElementById('profileColorMenu');
+    const button=document.getElementById('profileColorButton');
+    if(control && menu && !menu.hidden && !control.contains(event.target)){
+      menu.hidden=true;
+      button?.setAttribute('aria-expanded','false');
+    }
+  });
+
   const {data}=await supabase.auth.getSession();
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
+
+  if(location.hash.startsWith('#profile'))await renderProfile();
+  else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab);
+  else if(location.hash==='#badges')await refreshBadgeExistCounts();
+  else if(location.hash.startsWith('#badges/'))await renderBadgeDetailFromSupabase();
 
   supabase.auth.onAuthStateChange((_event,session)=>{
     setTimeout(async()=>{
       state.session=session;
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
-      if(location.hash.startsWith("#profile"))renderProfile();
-      if(location.hash==="#leaderboard")renderLeaderboard(state.leaderboardTab);
+      if(location.hash.startsWith('#profile'))renderProfile();
+      if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      if(location.hash==='#badges')refreshBadgeExistCounts();
+      if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
     },0);
   });
 
   setInterval(()=>{
     const day=localDayKey();
-    if(day!==state.dayKey){
-      // Midnight reset: reload the app so Generate Chord is available for the new day.
-      location.reload();
-      return;
-    }
-    if(location.hash==="#badges")refreshBadgeExistCounts();
+    if(day!==state.dayKey){location.reload();return;}
+    if(location.hash==='#badges')refreshBadgeExistCounts();
   },1000);
 }
 
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts};
+window.chordleAuth={showLogin,showSignup,logout,renderProfile,renderLeaderboard,persistCompletedRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase};
