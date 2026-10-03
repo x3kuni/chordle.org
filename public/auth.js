@@ -21,6 +21,10 @@ const state = {
   restoring: false,
   persisting: false,
   leaderboardTab: "today",
+  leaderboardRenderSeq: 0,
+  leaderboardWinnerKey: null,
+  leaderboardTodayRolls: [],
+  leaderboardTodayProfiles: new Map(),
   dayKey: localDayKey()
 };
 
@@ -52,7 +56,14 @@ style.textContent=`
 .ca-best-roll{padding:16px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)}
 .ca-best-roll-name{font-size:18px;font-weight:850}
 .ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
-@media(max-width:620px){.ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}}
+.leaderboard-winner-card .mock-roll-score-block{min-height:96px!important;padding-bottom:8px!important}
+.leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px)!important;line-height:.96!important;padding:0 6px 8px!important}
+.leaderboard-row-card .mock-roll-score-block .score{font-size:clamp(38px,4.5vw,58px)!important;line-height:.96!important}
+.profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px)!important;line-height:.96!important}
+@media(max-width:620px){
+  .ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}
+  .leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(50px,14vw,82px)!important}
+}
 `;
 document.head.appendChild(style);
 
@@ -519,23 +530,27 @@ async function bestRollsByUser(desc=true){
   return [...first.values()];
 }
 
-async function renderLeaderboard(tab=state.leaderboardTab){
-  unlockExistingPages();
-  state.leaderboardTab=tab||'today';
-  const list=document.getElementById('leaderboardList');
+function configureLeaderboardTabs(){
+  const old=document.querySelector('.leaderboard-tab[data-leaderboard-tab="lowest"]');
+  if(old){
+    old.dataset.leaderboardTab='lifetime';
+    old.textContent='Most Lifetime';
+  }
+}
+
+function winnerSignature(roll){
+  if(!roll)return 'none';
+  return [roll.id,roll.user_id,roll.score,roll.chord_name,roll.rarity].join(':');
+}
+
+function renderStableWinner(todayRolls,todayProfiles){
   const winnerEl=document.getElementById('leaderboardWinner');
-  const dateEl=document.getElementById('leaderboardDate');
-  const titleEl=document.getElementById('leaderboardTitle');
-  if(!list||!winnerEl)return;
-
-  list.replaceChildren();
-  winnerEl.replaceChildren();
-  if(titleEl)titleEl.textContent="Today's Leaderboard";
-  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
-  const todayRolls=await fetchTodayRolls();
-  const todayProfiles=await profileMapFor(todayRolls.map(r=>r.user_id));
+  if(!winnerEl)return;
   const winner=todayRolls[0]||null;
+  const signature=winnerSignature(winner);
+  if(signature===state.leaderboardWinnerKey && winnerEl.children.length)return;
+
+  winnerEl.replaceChildren();
   if(winner){
     const profile=todayProfiles.get(winner.user_id)||{id:winner.user_id,username:'Player',name_color:'#ffffff'};
     const summary=rollSummary(winner);
@@ -555,35 +570,74 @@ async function renderLeaderboard(tab=state.leaderboardTab){
     empty.textContent='No rolls have been completed today.';
     winnerEl.appendChild(empty);
   }
+  state.leaderboardWinnerKey=signature;
+}
+
+async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={}){
+  unlockExistingPages();
+  configureLeaderboardTabs();
+  state.leaderboardTab=(tab==='lowest'?'lifetime':(tab||'today'));
+  const seq=++state.leaderboardRenderSeq;
+
+  const list=document.getElementById('leaderboardList');
+  const dateEl=document.getElementById('leaderboardDate');
+  const titleEl=document.getElementById('leaderboardTitle');
+  if(!list)return;
+
+  // Only the ranking list is replaced on tab changes. The #1 Today showcase
+  // stays mounted so it no longer flashes away and rebuilds every click.
+  list.replaceChildren();
+  if(titleEl)titleEl.textContent="Today's Leaderboard";
+  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  let todayRolls=state.leaderboardTodayRolls;
+  let todayProfiles=state.leaderboardTodayProfiles;
+  if(refreshWinner || !todayRolls.length){
+    todayRolls=await fetchTodayRolls();
+    if(seq!==state.leaderboardRenderSeq)return;
+    todayProfiles=await profileMapFor(todayRolls.map(r=>r.user_id));
+    if(seq!==state.leaderboardRenderSeq)return;
+    state.leaderboardTodayRolls=todayRolls;
+    state.leaderboardTodayProfiles=todayProfiles;
+    renderStableWinner(todayRolls,todayProfiles);
+  }
 
   if(state.leaderboardTab==='today'){
     todayRolls.slice(1).forEach((roll,index)=>{
+      if(seq!==state.leaderboardRenderSeq)return;
       const profile=todayProfiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
       const row=renderedLeaderboardRow(profile,index+2,rollSummary(roll));
       if(row)list.appendChild(row);
     });
   }else if(state.leaderboardTab==='alltime'){
     const rolls=await bestRollsByUser(true);
+    if(seq!==state.leaderboardRenderSeq)return;
     const profiles=await profileMapFor(rolls.map(r=>r.user_id));
+    if(seq!==state.leaderboardRenderSeq)return;
     rolls.forEach((roll,index)=>{
       const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
       const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
       if(row)list.appendChild(row);
     });
-  }else if(state.leaderboardTab==='lowest'){
-    const rolls=await bestRollsByUser(false);
-    const profiles=await profileMapFor(rolls.map(r=>r.user_id));
-    rolls.forEach((roll,index)=>{
-      const profile=profiles.get(roll.user_id)||{id:roll.user_id,username:'Player',name_color:'#ffffff'};
-      const row=renderedLeaderboardRow(profile,index+1,rollSummary(roll));
+  }else if(state.leaderboardTab==='lifetime'){
+    const {data,error}=await supabase.from('profiles')
+      .select('id,username,name_color,lifetime_score')
+      .order('lifetime_score',{ascending:false})
+      .limit(100);
+    if(seq!==state.leaderboardRenderSeq)return;
+    if(error)console.warn('Chordle lifetime leaderboard:',error.message);
+    (data||[]).forEach((profile,index)=>{
+      const row=renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)+' lifetime');
       if(row)list.appendChild(row);
     });
   }else if(state.leaderboardTab==='badges'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
+    if(seq!==state.leaderboardRenderSeq)return;
     const counts=new Map();
     for(const b of (data||[]))counts.set(b.user_id,(counts.get(b.user_id)||0)+1);
     const ids=[...counts.keys()];
     const profiles=await profileMapFor(ids);
+    if(seq!==state.leaderboardRenderSeq)return;
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
@@ -592,12 +646,14 @@ async function renderLeaderboard(tab=state.leaderboardTab){
     });
   }else if(state.leaderboardTab==='discovered'){
     const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
+    if(seq!==state.leaderboardRenderSeq)return;
     const firstByBadge=new Map();
     for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
     const counts=new Map();
     for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
     const ids=[...counts.keys()];
     const profiles=await profileMapFor(ids);
+    if(seq!==state.leaderboardRenderSeq)return;
     const ranked=ids.map(id=>({profile:profiles.get(id)||{id,username:'Player',name_color:'#ffffff'},count:counts.get(id)||0}))
       .sort((a,b)=>b.count-a.count||String(a.profile.username).localeCompare(String(b.profile.username)));
     ranked.forEach((entry,index)=>{
@@ -606,6 +662,7 @@ async function renderLeaderboard(tab=state.leaderboardTab){
     });
   }
 
+  if(seq!==state.leaderboardRenderSeq)return;
   if(!list.children.length){
     list.innerHTML='<div class="profile-badges-empty">No results yet.</div>';
   }
@@ -737,21 +794,22 @@ async function initializeSignedInUser(user){
 function wireNavigation(){
   document.getElementById('profileNavBtn')?.addEventListener('click',e=>{
     e.preventDefault();e.stopImmediatePropagation();
-    location.hash=profileHref(state.session?.user?.id);
-    setTimeout(renderProfile,0);
+    const target=profileHref(state.session?.user?.id);
+    if(location.hash===target)renderProfile();
+    else location.hash=target;
   },true);
 
   document.getElementById('leaderboardNavBtn')?.addEventListener('click',e=>{
     e.preventDefault();e.stopImmediatePropagation();
-    location.hash='#leaderboard';
     state.leaderboardTab='today';
-    setTimeout(()=>renderLeaderboard('today'),0);
+    if(location.hash==='#leaderboard')renderLeaderboard('today',{refreshWinner:true});
+    else location.hash='#leaderboard';
   },true);
 
   document.getElementById('leaderboardTabs')?.addEventListener('click',e=>{
     const btn=e.target.closest('.leaderboard-tab');if(!btn)return;
     e.preventDefault();e.stopImmediatePropagation();
-    renderLeaderboard(btn.dataset.leaderboardTab||'today');
+    renderLeaderboard(btn.dataset.leaderboardTab||'today',{refreshWinner:false});
   },true);
 
   document.getElementById('badgesNavBtn')?.addEventListener('click',()=>{
@@ -762,7 +820,7 @@ function wireNavigation(){
   window.addEventListener('hashchange',()=>{
     setTimeout(()=>{
       if(location.hash.startsWith('#profile'))renderProfile();
-      else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
       else if(location.hash==='#badges')refreshBadgeExistCounts();
       else if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
     },0);
@@ -782,13 +840,15 @@ function wireRollCompletion(){
     if(state.todayRoll){
       event.preventDefault();
       event.stopImmediatePropagation();
-      restoreDailyRoll(state.todayRoll);
+      const summary=rollSummary(state.todayRoll);
+      if(summary)void nativeApp()?.replayCompletedRoll?.(summary);
     }
   },true);
 }
 
 async function boot(){
   unlockExistingPages();
+  configureLeaderboardTabs();
   wireNavigation();
   wireRollCompletion();
 
@@ -808,7 +868,7 @@ async function boot(){
   syncLifetimeDisplay();
 
   if(location.hash.startsWith('#profile'))await renderProfile();
-  else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab);
+  else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
   else if(location.hash==='#badges')await refreshBadgeExistCounts();
   else if(location.hash.startsWith('#badges/'))await renderBadgeDetailFromSupabase();
 
@@ -818,7 +878,7 @@ async function boot(){
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
       if(location.hash.startsWith('#profile'))renderProfile();
-      if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab);
+      if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
       if(location.hash==='#badges')refreshBadgeExistCounts();
       if(location.hash.startsWith('#badges/'))renderBadgeDetailFromSupabase();
     },0);
