@@ -275,9 +275,9 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   display:block!important;
   position:relative!important;
   inset:auto!important;
-  transform:none!important;
   width:100%!important;
   max-width:100%!important;
+  grid-area:auto!important;
   margin:0 auto 12px!important;
   padding:0!important;
   text-align:center!important;
@@ -288,8 +288,8 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   display:block!important;
   position:relative!important;
   inset:auto!important;
-  transform:none!important;
   width:100%!important;
+  grid-area:auto!important;
   margin:0 auto!important;
   text-align:center!important;
 }
@@ -297,8 +297,8 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   display:block!important;
   position:relative!important;
   inset:auto!important;
-  transform:none!important;
   width:100%!important;
+  grid-area:auto!important;
   margin:13px auto 0!important;
   text-align:center!important;
 }
@@ -317,6 +317,9 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 }
 .badge-index-entry.chordle-publicly-discovered{
   background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
+}
+.badge-index-entry.chordle-publicly-discovered .badge-index-row{
+  background:inherit!important;
 }
 .badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="uncommon"]{background:linear-gradient(135deg,rgba(98,213,139,.16),rgba(25,28,30,.86) 72%)!important}
 .badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="rare"]{background:linear-gradient(135deg,rgba(94,167,255,.17),rgba(25,28,32,.86) 72%)!important}
