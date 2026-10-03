@@ -237,8 +237,8 @@ function badgeObjectsForNotes(notes){
 
 async function persistCompletedRoll(){
   if(state.restoring||state.persisting||!state.session?.user)return;
-  const next=document.getElementById("nextChord");
-  if(!next?.classList.contains("visible"))return;
+  const next=document.getElementById('nextChord');
+  if(!next?.classList.contains('visible'))return;
   const notes=currentDailyNotes();
   if(!notes)return;
 
@@ -246,50 +246,52 @@ async function persistCompletedRoll(){
   try{
     let roll=await getTodayRoll();
     if(!roll){
-      const total=numericText(document.getElementById("score"));
+      const total=numericText(document.getElementById('score'));
       if(total<=0)return;
       const payload={
         user_id:state.session.user.id,
         roll_day:localDayKey(),
         notes,
         score:Math.round(total),
-        chord_name:String(document.getElementById("chordName")?.textContent||"").trim()||null,
-        chord_detail:String(document.getElementById("chordDetail")?.textContent||"").trim()||null,
+        chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
+        chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
         rarity:currentRarityId()
       };
-      const {data,error}=await supabase.from("chordle_rolls").insert(payload).select("*").single();
+      const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
       if(error){
         roll=await getTodayRoll();
         if(!roll)throw error;
-      }else{
-        roll=data;
-      }
+      }else roll=data;
+    }
 
-      const badges=badgeObjectsForNotes(notes);
-      if(roll&&badges.length){
-        const rows=badges.map(b=>({
-          roll_id:roll.id,
-          user_id:state.session.user.id,
-          badge_key:String(b.key||b.name||"unknown"),
-          badge_name:String(b.name||"Badge"),
-          badge_description:String(b.desc||""),
-          rarity:String(b.rarity||"common").toLowerCase(),
-          points:Math.max(0,Math.round(Number(b.points)||0)),
-          special:!!b.special
-        }));
-        const {error:badgeError}=await supabase.from("chordle_roll_badges").insert(rows);
-        if(badgeError)console.warn("Chordle badge save:",badgeError.message);
+    const badges=badgeObjectsForNotes(notes);
+    if(roll&&badges.length){
+      const existing=await getRollBadges(roll.id);
+      const existingKeys=new Set(existing.map(b=>String(b.badge_key)));
+      const rows=badges.filter(b=>!existingKeys.has(String(b.key||b.name||'unknown'))).map(b=>({
+        roll_id:roll.id,
+        user_id:state.session.user.id,
+        badge_key:String(b.key||b.name||'unknown'),
+        badge_name:String(b.name||'Badge'),
+        badge_description:String(b.desc||''),
+        rarity:String(b.rarity||'common').toLowerCase(),
+        points:Math.max(0,Math.round(Number(b.points)||0)),
+        special:!!b.special
+      }));
+      if(rows.length){
+        const {error:badgeError}=await supabase.from('chordle_roll_badges').insert(rows);
+        if(badgeError)console.warn('Chordle badge save:',badgeError.message);
       }
     }
 
     state.todayRoll=roll;
     await loadProfile(state.session.user,2);
     await syncOwnedBadgesToLocal();
-    if(location.hash==="#leaderboard")await renderLeaderboard();
+    if(location.hash==='#leaderboard')await renderLeaderboard();
     await refreshBadgeExistCounts();
-    if(location.hash.startsWith("#profile"))await renderProfile();
+    if(location.hash.startsWith('#profile'))await renderProfile();
   }catch(err){
-    console.warn("Chordle roll persistence:",err);
+    console.warn('Chordle roll persistence:',err);
   }finally{
     state.persisting=false;
   }
