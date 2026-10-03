@@ -2201,6 +2201,7 @@ async function initializeSignedInUser(user,{allowLocalReset=false}={}){
   }
 
   if(state.todayRoll){
+    clearAnonymousRollClaim();
     restoreDailyRoll(state.todayRoll);
     return;
   }
@@ -2364,6 +2365,9 @@ async function boot(){
   });
 
   const {data}=await supabase.auth.getSession();
+  // Capture a browser-owned anonymous roll before adopting a restored session.
+  // This covers email-confirmation redirects and reloads after account creation.
+  if(data.session?.user)captureAnonymousRoll({requireComplete:false});
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user,{allowLocalReset:true});
   syncLifetimeDisplay();
@@ -2386,6 +2390,7 @@ async function boot(){
 
   supabase.auth.onAuthStateChange((_event,session)=>{
     setTimeout(async()=>{
+      if(session?.user&&!state.session?.user)captureAnonymousRoll({requireComplete:false});
       state.session=session;
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
