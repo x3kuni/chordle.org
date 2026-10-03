@@ -14,6 +14,8 @@ const LIFETIME_LOCAL_KEY = "chord_rng_lifetime_v1";
 const LIFETIME_DAY_KEY = "chord_rng_lifetime_day_v1";
 const SEEN_BADGES_KEY = "chordle_seen_badges_v1";
 const PENDING_ANON_ROLL_KEY = "chordle_pending_anonymous_roll_v1";
+const SIGNUP_COOLDOWN_KEY = "chordle_signup_cooldown_v1";
+const SIGNUP_COOLDOWN_MS = 60000;
 
 const state = {
   session: null,
@@ -33,6 +35,20 @@ const state = {
 const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
 const PROFILE_NAME_COLORS={white:"#f4f5f7",red:"#ff6262",orange:"#ff9f43",yellow:"#ffd84d",green:"#62d58b",blue:"#5ea7ff",purple:"#aa79ff",pink:"#ff72c6"};
 const INFO_HASHES=new Set(["#credits","#how-to-play","#updates"]);
+const RARITY_EMOJI={
+  common:"⬜",
+  uncommon:"🟩",
+  rare:"🟦",
+  epic:"🟪",
+  legendary:"🟨",
+  mythic:"🟥",
+  ultra:"💗",
+  godly:"◻️",
+  supreme:"🌈",
+  omnipotent:"⬛",
+  eternal:"🟧",
+  absolute:"🌌"
+};
 
 const style=document.createElement("style");
 style.textContent=`
@@ -104,6 +120,27 @@ html.chordle-info-route .admin-luck{display:none!important}
 #chordle-profile-auth-slot [data-ca="signup"].chordle-create-account-pulse{
   animation:chordleCreateAccountPulse 1.35s ease-in-out infinite;
 }
+#shareChordBtn{min-width:72px}
+.chordle-copy-toast{
+  position:fixed;
+  z-index:2147483642;
+  top:46px;
+  left:50%;
+  transform:translate(-50%,-8px);
+  padding:7px 12px;
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:8px;
+  background:rgba(18,19,22,.94);
+  color:#eef0f4;
+  font-size:11px;
+  font-weight:760;
+  letter-spacing:.02em;
+  box-shadow:0 8px 28px rgba(0,0,0,.28);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease;
+}
+.chordle-copy-toast.show{opacity:1;transform:translate(-50%,0)}
 @keyframes chordleCreateAccountPulse{
   0%,100%{transform:scale(1);box-shadow:0 0 0 1px rgba(255,255,255,.16),0 0 5px rgba(255,255,255,.08)}
   50%{transform:scale(1.045);box-shadow:0 0 0 2px rgba(255,255,255,.80),0 0 18px rgba(255,255,255,.30)}
@@ -125,6 +162,106 @@ function joined(v){if(!v)return "Joined —";const d=new Date(v);return Number.i
 function readJson(key){try{return JSON.parse(localStorage.getItem(key)||"null");}catch{return null;}}
 function writeJson(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}
 function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0-9.-]/g,""));return Number.isFinite(n)?n:0;}
+
+function rarityEmoji(rarity){
+  return RARITY_EMOJI[String(rarity||'common').toLowerCase()]||"⬜";
+}
+
+function showCopyToast(message="Chord copied to clipboard"){
+  let toast=document.getElementById('chordleCopyToast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.id='chordleCopyToast';
+    toast.className='chordle-copy-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent=message;
+  toast.classList.remove('show');
+  requestAnimationFrame(()=>toast.classList.add('show'));
+  clearTimeout(showCopyToast.timer);
+  showCopyToast.timer=setTimeout(()=>toast.classList.remove('show'),1700);
+}
+
+async function copyPlainText(text){
+  if(navigator.clipboard?.writeText){
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area=document.createElement('textarea');
+  area.value=text;
+  area.setAttribute('readonly','');
+  area.style.position='fixed';
+  area.style.opacity='0';
+  document.body.appendChild(area);
+  area.select();
+  const ok=document.execCommand('copy');
+  area.remove();
+  if(!ok)throw new Error('Clipboard copy failed');
+}
+
+function currentShareText(){
+  const next=document.getElementById('nextChord');
+  const notes=currentDailyNotes();
+  const score=Math.max(0,Math.round(numericText(document.getElementById('score'))));
+  if(!next?.classList.contains('visible')||!notes||score<=0)return '';
+
+  const chordName=String(document.getElementById('chordName')?.textContent||'Chord').trim()||'Chord';
+  const rarity=String(currentRarityId()||'common').toLowerCase();
+  const rarityLabel=String(document.getElementById('scoreRarity')?.textContent||titleCaseRarity(rarity)).trim()||titleCaseRarity(rarity);
+  const percentile=String(document.getElementById('scorePercentile')?.textContent||'').trim();
+  const badges=badgeObjectsForNotes(notes)
+    .filter(b=>b&&b.name)
+    .sort((a,b)=>(Number(b.points)||0)-(Number(a.points)||0))
+    .slice(0,5);
+
+  const lines=[
+    `**${chordName}**`,
+    `**${notes.map(noteName).join(' - ')}**`,
+    `**${rarityEmoji(rarity)} ${rarityLabel}**`
+  ];
+  if(percentile)lines.push(`**${percentile}**`);
+  lines.push(`**${score.toLocaleString()}** Score`,'');
+  badges.forEach((badge,index)=>{
+    const prefix=index<3?'## ':'';
+    lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
+  });
+  return lines.join('\n');
+}
+
+function syncShareButton(){
+  const btn=document.getElementById('shareChordBtn');
+  if(!btn)return;
+  btn.disabled=!currentShareText();
+}
+
+function mountShareButton(){
+  const audio=document.getElementById('audioBtn');
+  if(!audio?.parentElement)return null;
+  let btn=document.getElementById('shareChordBtn');
+  if(!btn){
+    btn=document.createElement('button');
+    btn.id='shareChordBtn';
+    btn.type='button';
+    btn.textContent='Share';
+    btn.disabled=true;
+    audio.insertAdjacentElement('afterend',btn);
+    btn.addEventListener('click',async event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      const text=currentShareText();
+      if(!text)return;
+      try{
+        await copyPlainText(text);
+        showCopyToast('Chord copied to clipboard');
+      }catch(error){
+        console.warn('Chordle share copy:',error);
+        showCopyToast('Could not copy chord');
+      }
+    });
+  }
+  syncShareButton();
+  return btn;
+}
 
 function nativeApp(){return window.__CHORDLE_APP__||null;}
 function titleCaseRarity(v){return String(v||'common').replace(/-/g,' ').replace(/\\b\\w/g,m=>m.toUpperCase());}
@@ -608,6 +745,7 @@ function restoreDailyRoll(roll){
     }catch{}
     const restored=nativeApp()?.restoreCompletedRoll?.(summary);
     syncLifetimeDisplay();
+    setTimeout(syncShareButton,0);
     return restored!==false;
   }finally{
     setTimeout(()=>{state.restoring=false;},0);
@@ -993,7 +1131,9 @@ async function renderBadgeDetailFromSupabase(){
   title.id='badgeDetailTitle';
   title.textContent=badge.name;
   const divider=document.createElement('div');divider.className='badge-detail-divider';
-  const desc=document.createElement('p');desc.className='badge-detail-description';desc.textContent=badge.desc||'No description available.';
+  const desc=document.createElement('p');
+  desc.className='badge-detail-description';
+  desc.textContent=app?.badgeDescription?.(badge)||badge.desc||'This badge has a defined Chordle rule, but its description could not be loaded.';
 
   const stats=document.createElement('div');stats.className='badge-detail-stats';
   const statDefs=[
@@ -1040,10 +1180,21 @@ function showLogin(existingOverlay=null){
   setModalContent(o,loginFormMarkup());
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
   f.onsubmit=async e=>{
-    e.preventDefault();msg.textContent="Signing in…";
+    e.preventDefault();
+    const submit=f.querySelector('button[type="submit"]');
+    if(submit?.disabled)return;
+    if(submit)submit.disabled=true;
+    msg.textContent="Signing in…";
     const fd=new FormData(f);
     const {data,error}=await supabase.auth.signInWithPassword({email:String(fd.get("email")).trim(),password:String(fd.get("password"))});
-    if(error){msg.textContent=error.message;return;}
+    if(error){
+      const message=String(error.message||'');
+      msg.textContent=/email.*not.*confirm/i.test(message)
+        ?"This account exists, but its email is not confirmed yet. Check the confirmation email and spam folder, then sign in again."
+        :message;
+      if(submit)submit.disabled=false;
+      return;
+    }
     state.session=data.session;
     await initializeSignedInUser(data.user);
     o.remove();
@@ -1060,10 +1211,32 @@ function showSignup(existingOverlay=null){
   const f=o.querySelector("form"),msg=o.querySelector(".ca-msg");
   f.onsubmit=async e=>{
     e.preventDefault();
+    const submit=f.querySelector('button[type="submit"]');
+    if(submit?.disabled)return;
     const fd=new FormData(f),uname=String(fd.get("username")).trim();
+    const email=String(fd.get("email")).trim().toLowerCase();
+    const previous=readJson(SIGNUP_COOLDOWN_KEY);
+    const elapsed=Date.now()-Number(previous?.at||0);
+    if(previous?.email===email && elapsed>=0 && elapsed<SIGNUP_COOLDOWN_MS){
+      const seconds=Math.max(1,Math.ceil((SIGNUP_COOLDOWN_MS-elapsed)/1000));
+      msg.textContent=`A confirmation request was just sent for this email. Check your inbox/spam or use Sign in. Try another signup request in ${seconds}s.`;
+      return;
+    }
+
+    if(submit)submit.disabled=true;
     msg.textContent="Creating account…";
-    const {data,error}=await supabase.auth.signUp({email:String(fd.get("email")).trim(),password:String(fd.get("password")),options:{data:{username:uname}}});
-    if(error){msg.textContent=error.message;return;}
+    writeJson(SIGNUP_COOLDOWN_KEY,{email,at:Date.now()});
+    const {data,error}=await supabase.auth.signUp({email,password:String(fd.get("password")),options:{data:{username:uname}}});
+    if(error){
+      const message=String(error.message||'');
+      if(/rate.?limit|too many/i.test(message)){
+        msg.textContent="Email sending is temporarily rate-limited. Do not keep creating accounts. If this email already has an account, use Sign in; otherwise check your inbox/spam and wait before requesting another confirmation email.";
+      }else{
+        msg.textContent=message;
+      }
+      if(submit)submit.disabled=false;
+      return;
+    }
     if(data.session){
       state.session=data.session;
       await initializeSignedInUser(data.user);
@@ -1072,6 +1245,7 @@ function showSignup(existingOverlay=null){
     }else{
       msg.className="ca-msg ok";
       msg.textContent="Account created. Check your email to confirm it, then sign in. Your chord is waiting to be saved.";
+      if(submit)submit.disabled=false;
     }
   };
   return o;
@@ -1165,6 +1339,7 @@ function wireRollCompletion(){
   const next=document.getElementById("nextChord");
   if(next){
     const observer=new MutationObserver(()=>{
+      syncShareButton();
       if(!next.classList.contains("visible")||state.restoring)return;
       if(state.session?.user)setTimeout(persistCompletedRoll,0);
       else setTimeout(showAnonymousSavePrompt,180);
@@ -1187,6 +1362,7 @@ async function boot(){
   configureLeaderboardTabs();
   mountSiteFooter();
   mountInfoPage();
+  mountShareButton();
   wireNavigation();
   wireRollCompletion();
 
@@ -1205,6 +1381,7 @@ async function boot(){
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
   syncAnonymousAccountAttention();
+  syncShareButton();
   if(!data.session?.user && document.getElementById("nextChord")?.classList.contains("visible")){
     setTimeout(showAnonymousSavePrompt,250);
   }
@@ -1239,4 +1416,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText};
