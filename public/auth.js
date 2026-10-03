@@ -14,6 +14,7 @@ const LIFETIME_LOCAL_KEY = "chord_rng_lifetime_v1";
 const LIFETIME_DAY_KEY = "chord_rng_lifetime_day_v1";
 const SEEN_BADGES_KEY = "chordle_seen_badges_v1";
 const PENDING_ANON_ROLL_KEY = "chordle_pending_anonymous_roll_v1";
+const ANON_ROLL_BROWSER_KEY = "chordle_anonymous_roll_browser_v1";
 const SIGNUP_COOLDOWN_KEY = "chordle_signup_cooldown_v1";
 const SIGNUP_COOLDOWN_MS = 60000;
 const CHORDLE_DISCORD_URL = "https://discord.gg/vsWx9n2S4";
@@ -1006,15 +1007,30 @@ function canonicalRollAnalysis(notes){
   };
 }
 
+function markAnonymousRollStarted(){
+  if(state.session?.user||state.externalReplay)return;
+  writeJson(ANON_ROLL_BROWSER_KEY,{roll_day:localDayKey(),started_at:Date.now()});
+}
+
+function clearAnonymousRollClaim(){
+  try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+  try{localStorage.removeItem(ANON_ROLL_BROWSER_KEY);}catch{}
+}
+
 function captureAnonymousRoll({requireComplete=true}={}){
   if(state.session?.user)return null;
+  const previous=readJson(PENDING_ANON_ROLL_KEY);
+  const marker=readJson(ANON_ROLL_BROWSER_KEY);
+  const today=localDayKey();
+  const eligible=previous?.roll_day===today||marker?.roll_day===today;
+  if(!eligible)return null;
+
   const notes=currentDailyNotes();
   const analysis=canonicalRollAnalysis(notes);
   const next=document.getElementById('nextChord');
   const complete=!!next?.classList.contains('visible');
   if(!notes||!analysis||(requireComplete&&!complete))return null;
 
-  const previous=readJson(PENDING_ANON_ROLL_KEY);
   const pending={
     roll_day:localDayKey(),
     notes,
@@ -1034,7 +1050,7 @@ async function persistPendingAnonymousRoll(){
   const pending=readJson(PENDING_ANON_ROLL_KEY);
   if(!pending)return null;
   if(pending.roll_day!==localDayKey()){
-    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+    clearAnonymousRollClaim();
     return null;
   }
   const notes=Array.isArray(pending.notes)?pending.notes.map(Number):[];
@@ -1046,7 +1062,7 @@ async function persistPendingAnonymousRoll(){
   if(roll){
     // An account that already has today's official roll must never absorb
     // badges from a different anonymous browser roll.
-    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+    clearAnonymousRollClaim();
     return roll;
   }
 
@@ -1065,7 +1081,7 @@ async function persistPendingAnonymousRoll(){
   if(error){
     roll=await getTodayRoll();
     if(roll){
-      try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+      clearAnonymousRollClaim();
       return roll;
     }
     throw error;
@@ -1092,7 +1108,7 @@ async function persistPendingAnonymousRoll(){
     }
   }
 
-  try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+  clearAnonymousRollClaim();
   await syncFirstDiscoveryTags({allowProvisional:false,all:true});
   return roll||null;
 }
@@ -1147,7 +1163,7 @@ async function persistCompletedRoll(){
     }
 
     state.todayRoll=roll;
-    try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+    clearAnonymousRollClaim();
     await loadProfile(state.session.user,2);
     await syncOwnedBadgesToLocal();
     await syncFirstDiscoveryTags({allowProvisional:false,all:true});
@@ -2302,6 +2318,7 @@ function wireRollCompletion(){
       if(!next.classList.contains("visible")||state.restoring||state.externalReplay)return;
       if(state.session?.user)setTimeout(persistCompletedRoll,0);
       else{
+        markAnonymousRollStarted();
         captureAnonymousRoll({requireComplete:true});
         setTimeout(showAnonymousSavePrompt,180);
       }
@@ -2310,6 +2327,10 @@ function wireRollCompletion(){
   }
 
   document.getElementById('revealBtn')?.addEventListener('click',event=>{
+    if(!state.session?.user&&!state.todayRoll&&!state.externalReplay){
+      markAnonymousRollStarted();
+      setTimeout(()=>captureAnonymousRoll({requireComplete:false}),0);
+    }
     if(state.todayRoll){
       event.preventDefault();
       event.stopImmediatePropagation();
