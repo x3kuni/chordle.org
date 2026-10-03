@@ -49,6 +49,7 @@ const RARITY_EMOJI={
   eternal:"🟧",
   absolute:"🌌"
 };
+const RARITY_ORDER=["common","uncommon","rare","epic","legendary","mythic","ultra","godly","supreme","omnipotent","eternal","absolute"];
 
 const style=document.createElement("style");
 style.textContent=`
@@ -141,6 +142,18 @@ html.chordle-info-route .admin-luck{display:none!important}
   transition:opacity .18s ease,transform .18s ease;
 }
 .chordle-copy-toast.show{opacity:1;transform:translate(-50%,0)}
+.badge-first-discovery-tag{
+  display:inline-flex;align-items:center;justify-content:center;height:21px;padding:0 7px;
+  border:1px solid rgba(255,92,126,.90);border-radius:6px;
+  background:linear-gradient(135deg,rgba(216,38,76,.24),rgba(255,94,183,.22));
+  color:#ff9cbc;font-size:9px;line-height:1;font-weight:900;letter-spacing:.075em;
+  text-transform:uppercase;box-shadow:0 0 8px rgba(255,66,125,.20),inset 0 0 7px rgba(255,255,255,.04);
+  animation:firstDiscoveryPulse 1.35s ease-in-out infinite;
+}
+@keyframes firstDiscoveryPulse{
+  0%,100%{color:#ff9aad;border-color:rgba(255,75,101,.76);box-shadow:0 0 6px rgba(255,54,86,.14);filter:brightness(.97)}
+  50%{color:#ffd0e5;border-color:rgba(255,126,202,1);box-shadow:0 0 14px rgba(255,73,164,.42);filter:brightness(1.18)}
+}
 @keyframes chordleCreateAccountPulse{
   0%,100%{transform:scale(1);box-shadow:0 0 0 1px rgba(255,255,255,.16),0 0 5px rgba(255,255,255,.08)}
   50%{transform:scale(1.045);box-shadow:0 0 0 2px rgba(255,255,255,.80),0 0 18px rgba(255,255,255,.30)}
@@ -165,6 +178,10 @@ function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0
 
 function rarityEmoji(rarity){
   return RARITY_EMOJI[String(rarity||'common').toLowerCase()]||"⬜";
+}
+
+function rarityAtLeast(rarity,minimum){
+  return RARITY_ORDER.indexOf(String(rarity||'common').toLowerCase())>=RARITY_ORDER.indexOf(minimum);
 }
 
 function showCopyToast(message="Chord copied to clipboard"){
@@ -214,18 +231,87 @@ function currentShareText(){
     .sort((a,b)=>(Number(b.points)||0)-(Number(a.points)||0))
     .slice(0,5);
 
+  const rarityPrefix=rarityAtLeast(rarity,'legendary')?'## ':'';
   const lines=[
     `**${chordName}**`,
     `**${notes.map(noteName).join(' - ')}**`,
-    `**${rarityEmoji(rarity)} ${rarityLabel}**`
+    `${rarityPrefix}**${rarityEmoji(rarity)} ${rarityLabel}**`
   ];
   if(percentile)lines.push(`**${percentile}**`);
   lines.push(`**${score.toLocaleString()}** Score`,'');
-  badges.forEach((badge,index)=>{
-    const prefix=index<3?'## ':'';
+  badges.forEach(badge=>{
+    const prefix=rarityAtLeast(badge.rarity,'legendary')?'## ':'';
     lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
   });
   return lines.join('\n');
+}
+
+function ensureFirstDiscoveryTag(card,show){
+  const line=card?.querySelector?.('.badge-name-line');
+  if(!line)return;
+  let tag=line.querySelector('.badge-first-discovery-tag');
+  if(!show){
+    tag?.remove();
+    card.removeAttribute('data-first-discovery');
+    return;
+  }
+  if(!tag){
+    tag=document.createElement('span');
+    tag.className='badge-first-discovery-tag';
+    tag.textContent='First discovery';
+    line.appendChild(tag);
+  }
+  card.dataset.firstDiscovery='true';
+}
+
+let firstDiscoveryTimer=0;
+async function syncFirstDiscoveryTags({allowProvisional=true,all=false}={}){
+  const uid=state.session?.user?.id;
+  if(!uid)return;
+  const cards=[...document.querySelectorAll('#badges .badge[data-badge-key]')];
+  const candidates=all
+    ? cards
+    : cards.filter(card=>card.querySelector('.badge-new-tag')||card.dataset.firstDiscovery==='true');
+  if(!candidates.length)return;
+
+  const keys=[...new Set(candidates.map(card=>String(card.dataset.badgeKey||'')).filter(Boolean))];
+  if(!keys.length)return;
+  const {data,error}=await supabase.from('chordle_user_badges')
+    .select('user_id,badge_key,discovered_at')
+    .in('badge_key',keys)
+    .order('discovered_at',{ascending:true});
+  if(error){
+    console.warn('Chordle first discovery check:',error.message);
+    return;
+  }
+
+  const firstByKey=new Map();
+  for(const row of (data||[])){
+    const key=String(row.badge_key||'');
+    if(key&&!firstByKey.has(key))firstByKey.set(key,row);
+  }
+
+  for(const card of candidates){
+    const key=String(card.dataset.badgeKey||'');
+    const first=firstByKey.get(key);
+    const provisional=allowProvisional&&!first&&!!card.querySelector('.badge-new-tag');
+    ensureFirstDiscoveryTag(card,first?.user_id===uid||provisional);
+  }
+}
+
+function scheduleFirstDiscoverySync(options={}){
+  clearTimeout(firstDiscoveryTimer);
+  firstDiscoveryTimer=setTimeout(()=>void syncFirstDiscoveryTags(options),90);
+}
+
+function wireFirstDiscoveryBadges(){
+  const badges=document.getElementById('badges');
+  if(!badges)return;
+  const observer=new MutationObserver(records=>{
+    if(records.some(record=>record.addedNodes.length))scheduleFirstDiscoverySync({allowProvisional:true,all:false});
+  });
+  observer.observe(badges,{childList:true});
+  scheduleFirstDiscoverySync({allowProvisional:false,all:true});
 }
 
 function syncShareButton(){
@@ -638,7 +724,7 @@ async function persistPendingAnonymousRoll(){
       user_id:state.session.user.id,
       badge_key:String(b.key||b.name||'unknown'),
       badge_name:String(b.name||'Badge'),
-      badge_description:String(b.desc||''),
+      badge_description:String(nativeApp()?.badgeDescription?.(b)||b.desc||''),
       rarity:String(b.rarity||'common').toLowerCase(),
       points:Math.max(0,Math.round(Number(b.points)||0)),
       special:!!b.special
@@ -650,6 +736,7 @@ async function persistPendingAnonymousRoll(){
   }
 
   try{localStorage.removeItem(PENDING_ANON_ROLL_KEY);}catch{}
+  await syncFirstDiscoveryTags({allowProvisional:false,all:true});
   return roll||null;
 }
 
@@ -705,6 +792,7 @@ async function persistCompletedRoll(){
     state.todayRoll=roll;
     await loadProfile(state.session.user,2);
     await syncOwnedBadgesToLocal();
+    await syncFirstDiscoveryTags({allowProvisional:false,all:true});
     if(location.hash==='#leaderboard')await renderLeaderboard();
     await refreshBadgeExistCounts();
     if(location.hash.startsWith('#profile'))await renderProfile();
@@ -746,6 +834,7 @@ function restoreDailyRoll(roll){
     const restored=nativeApp()?.restoreCompletedRoll?.(summary);
     syncLifetimeDisplay();
     setTimeout(syncShareButton,0);
+    setTimeout(()=>void syncFirstDiscoveryTags({allowProvisional:false,all:true}),120);
     return restored!==false;
   }finally{
     setTimeout(()=>{state.restoring=false;},0);
@@ -950,7 +1039,7 @@ function configureLeaderboardTabs(){
 
 function winnerSignature(roll){
   if(!roll)return 'none';
-  return [roll.id,roll.user_id,roll.score,roll.chord_name,roll.rarity].join(':');
+  return [roll.id,roll.user_id,roll.score,roll.chord_name,roll.rarity,...(Array.isArray(roll.notes)?roll.notes:[])].join(':');
 }
 
 function renderStableWinner(todayRolls,todayProfiles){
@@ -968,6 +1057,14 @@ function renderStableWinner(todayRolls,todayProfiles){
     rank.className='leaderboard-winner-rank';
     rank.textContent='#1 Today';
     const card=summary?nativeApp()?.createRollCard?.(summary,{winner:true,showRarity:false}):null;
+    if(card&&Array.isArray(winner.notes)){
+      const exactPiano=nativeApp()?.createLeaderboardMiniPiano?.(winner.notes.map(Number),summary.rarity);
+      const existingPiano=card.querySelector('.leaderboard-mini-piano');
+      if(exactPiano){
+        if(existingPiano)existingPiano.replaceWith(exactPiano);
+        else card.prepend(exactPiano);
+      }
+    }
     const by=document.createElement('div');
     by.className='leaderboard-winner-by';
     by.append('Rolled by ',makeProfileLink(profile));
@@ -1363,6 +1460,7 @@ async function boot(){
   mountSiteFooter();
   mountInfoPage();
   mountShareButton();
+  wireFirstDiscoveryBadges();
   wireNavigation();
   wireRollCompletion();
 
