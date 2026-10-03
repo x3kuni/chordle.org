@@ -9778,7 +9778,7 @@ void main(){
 
   startGlobalGradientClock();
   // Internal validation hook used by offline balancing simulations.
-  window.__CHORDLE_SIM__={analyze,wholeChordBadges,calculateRollTotal,randomRoll,badgeRarityFromPoints};
+  window.__CHORDLE_SIM__={analyze,wholeChordBadges,calculateRollTotal,randomRoll,badgeRarityFromPoints,identifyChord,scoreTier,evaluateRoll:evaluateMockRoll};
 
   buildPiano(); renderSlots();
 })();
