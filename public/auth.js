@@ -87,8 +87,22 @@ style.textContent=`
 .ca-best-roll{padding:16px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)}
 .ca-best-roll-name{font-size:18px;font-weight:850}
 .ca-best-roll-meta{margin-top:7px;color:#8d929c;font-size:12px}
-.leaderboard-winner-card .mock-roll-score-block{min-height:96px;padding-bottom:8px}
-.leaderboard-winner-card .mock-roll-score-block .score{font-size:clamp(58px,7vw,100px);line-height:.96;padding:0 6px 8px}
+.leaderboard-winner-card .mock-roll-score-block{
+  min-height:104px;
+  padding:0 4px 8px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+}
+.leaderboard-winner-card .mock-roll-score-block .score{
+  width:100%!important;
+  font-size:clamp(66px,8vw,112px)!important;
+  line-height:.94;
+  margin:0!important;
+  padding:0 4px 8px!important;
+  text-align:center!important;
+  transform:none!important;
+}
 .profile-best-wrap .mock-roll-percentile,
 .leaderboard-row-card .mock-roll-percentile,
 .roll-history-item .mock-roll-percentile{
@@ -97,6 +111,14 @@ style.textContent=`
 }
 .mock-profile-link{
   max-width:100%;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;
+}
+.leaderboard-row-user .mock-profile-link{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  white-space:nowrap!important;
 }
 .profile-first-discoveries-panel{
   width:100%;margin:24px 0 0;padding:18px 20px;
@@ -254,7 +276,7 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   line-height:1!important;
 }
 .leaderboard-row-card .mock-roll-score-block,
-.chordle-tight-leaderboard-card .mock-roll-score-block{
+.chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block{
   align-self:stretch!important;
   display:flex!important;
   flex-direction:column!important;
@@ -263,8 +285,8 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   gap:4px!important;
   padding:0 1px 0 4px!important;
   margin:0!important;
-  min-height:100%!important;
-  height:100%!important;
+  min-height:0!important;
+  height:auto!important;
   text-align:right!important;
 }
 .leaderboard-roll-rarity{
@@ -277,7 +299,7 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 }
 .leaderboard-roll-rarity-corner{
   position:absolute!important;
-  top:7px!important;
+  top:10px!important;
   right:9px!important;
   bottom:auto!important;
   left:auto!important;
@@ -338,12 +360,17 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   -webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .leaderboard-row-card .mock-roll-score-block .score,
-.chordle-tight-leaderboard-card .mock-roll-score-block .score{
+.chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block .score{
   width:auto!important;
   max-width:100%!important;
   font-size:clamp(38px,4.5vw,58px);line-height:.92;
   margin:0 -2px 0 0!important;padding:0!important;
   text-align:right!important;
+  transform:translateY(7px);
+}
+#scoreBox.chordle-standard-score-tier #score{
+  position:relative!important;
+  top:-4px!important;
 }
 .chordle-badge-sort-host{position:relative!important}
 .chordle-badge-sort-control{
@@ -847,8 +874,9 @@ function fitProfileName(el){
   if(!el||!el.isConnected||el.clientWidth<=0)return;
   el.style.removeProperty('font-size');
   const base=parseFloat(getComputedStyle(el).fontSize)||16;
+  const minSize=el.closest('.leaderboard-row-user')?8:10.5;
   let size=base;
-  while(el.scrollWidth>el.clientWidth&&size>10.5){
+  while(el.scrollWidth>el.clientWidth&&size>minSize){
     size-=0.5;
     el.style.fontSize=size.toFixed(1)+'px';
   }
@@ -1571,15 +1599,12 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
     if(key&&!firstByKey.has(key))firstByKey.set(key,owner);
   }
 
-  const discovered=rows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
+  const uniqueOwnedRows=[...new Map(rows.map(row=>[String(row.badge_key),row])).values()];
+  const discovered=uniqueOwnedRows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
   discovered.sort((a,b)=>{
     const ar=String(a.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(a.badge_key))?.rarity||'common').toLowerCase();
     const br=String(b.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(b.badge_key))?.rarity||'common').toLowerCase();
-    const rarityDiff=RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
-    if(rarityDiff!==0)return rarityDiff;
-    const pointDiff=(Number(b.points)||0)-(Number(a.points)||0);
-    if(pointDiff!==0)return pointDiff;
-    return String(a.badge_name||a.badge_key).localeCompare(String(b.badge_name||b.badge_key));
+    return RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
   });
 
   if(!discovered.length){
@@ -2138,6 +2163,10 @@ function polishMainScoreLayout(){
     if(label==='SCORE')el.classList.add('chordle-score-heading');
     if(label==='RARITY')el.classList.add('chordle-rarity-heading');
   }
+
+  const rarityText=String(document.getElementById('scoreRarity')?.textContent||'').trim().toLowerCase();
+  const tierIndex=RARITY_ORDER.indexOf(rarityText);
+  box.classList.toggle('chordle-standard-score-tier',tierIndex>=0&&tierIndex<=RARITY_ORDER.indexOf('mythic'));
 }
 
 function badgeIndexPoints(entry){
