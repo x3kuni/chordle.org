@@ -320,43 +320,43 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   margin:0!important;padding:0!important;
   text-align:center!important;
 }
-/* Prototype layout pass: regular roll cards, #1 daily card, and main score spacing */
-.leaderboard-row-card .mock-roll-card,
-.leaderboard-row-card.mock-roll-card{
-  min-height:170px!important;
-  padding-top:14px!important;
-  padding-bottom:15px!important;
+/* Prototype layout pass: leaderboard rolls use the exact Best Roll card renderer. */
+.chordle-leaderboard-roll-row{
+  display:grid!important;
+  grid-template-columns:190px minmax(0,1fr)!important;
+  gap:20px!important;
+  align-items:center!important;
+  width:100%!important;
+  margin:0 0 18px!important;
 }
-.leaderboard-row-card .mock-roll-score-block,
-.leaderboard-row-card.mock-roll-card .mock-roll-score-block{
-  min-height:112px!important;
-  padding:10px 8px 12px!important;
-  gap:7px!important;
-  justify-content:center!important;
+.chordle-leaderboard-roll-player{
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  min-width:0!important;
+  padding-left:22px!important;
+  color:#b9bdc5!important;
+  font-size:19px!important;
+  font-weight:850!important;
+  white-space:nowrap!important;
 }
-.leaderboard-row-card .mock-roll-score-block .score,
-.leaderboard-row-card.mock-roll-card .mock-roll-score-block .score{
-  font-size:clamp(52px,6vw,78px)!important;
-  line-height:.94!important;
-  margin:6px 0 4px!important;
-  padding:0 6px!important;
-  text-align:center!important;
+.chordle-leaderboard-roll-rank{color:#9ba0aa!important}
+.chordle-leaderboard-roll-player .mock-profile-link{
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  text-decoration:none!important;
 }
-.leaderboard-row-card .leaderboard-roll-rarity{
-  font-size:13px!important;
-  letter-spacing:.16em!important;
+.chordle-leaderboard-card-host{
+  min-width:0!important;
+  width:100%!important;
+  margin:0!important;
 }
-.leaderboard-row-card .leaderboard-roll-rarity-corner{
-  top:16px!important;
-  right:17px!important;
-}
-.leaderboard-row-card .mock-roll-percentile{
-  margin-top:10px!important;
-  min-height:18px!important;
-  line-height:1.1!important;
+.chordle-leaderboard-card-host .mock-roll-card{
+  width:100%!important;
 }
 
-/* Today's #1 gets its own roomier treatment instead of inheriting the tight row card proportions. */
+/* Today's #1 remains a separate featured layout. */
 .leaderboard-winner-card .mock-roll-card,
 .leaderboard-winner-card .chordle-tight-leaderboard-card{
   min-height:212px!important;
@@ -388,10 +388,20 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   margin-top:11px!important;
 }
 
-/* Keep the existing main-page score size; only move it upward into the unused space. */
+/* Main score: retain the improved placement, only nudge it a few pixels lower. */
 #scoreBox #score{
   position:relative!important;
-  top:-16px!important;
+  top:-12px!important;
+}
+
+@media(max-width:760px){
+  .chordle-leaderboard-roll-row{
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+  }
+  .chordle-leaderboard-roll-player{
+    padding-left:4px!important;
+  }
 }
 .chordle-badge-sort-host{position:relative!important}
 .chordle-badge-sort-control{
@@ -407,22 +417,39 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   font:800 10px/1.1 inherit;cursor:pointer;outline:none;
 }
 .badge-index-entry.chordle-publicly-discovered{
-  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
+  background:transparent!important;
 }
 .badge-index-entry.chordle-publicly-discovered .badge-index-row{
-  background:inherit!important;
+  position:relative!important;
+  overflow:hidden!important;
+  cursor:pointer!important;
+  pointer-events:auto!important;
+  transition:transform .15s ease,filter .15s ease,box-shadow .15s ease,border-color .15s ease!important;
+  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
 }
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="uncommon"]{background:linear-gradient(135deg,rgba(98,213,139,.16),rgba(25,28,30,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="rare"]{background:linear-gradient(135deg,rgba(94,167,255,.17),rgba(25,28,32,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="epic"]{background:linear-gradient(135deg,rgba(170,121,255,.18),rgba(27,25,32,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="legendary"]{background:linear-gradient(135deg,rgba(255,216,77,.17),rgba(31,29,23,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="mythic"]{background:linear-gradient(135deg,rgba(255,77,99,.17),rgba(31,24,26,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="ultra"]{background:linear-gradient(135deg,rgba(255,114,198,.17),rgba(31,24,30,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="godly"]{background:linear-gradient(135deg,rgba(235,237,241,.15),rgba(25,26,29,.90) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="supreme"]{background:linear-gradient(135deg,rgba(255,84,84,.11),rgba(94,167,255,.09) 38%,rgba(170,121,255,.11) 68%,rgba(25,26,30,.88))!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="omnipotent"]{background:linear-gradient(135deg,rgba(150,154,162,.13),rgba(5,5,7,.92) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="eternal"]{background:linear-gradient(135deg,rgba(217,121,50,.18),rgba(27,25,23,.90) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="absolute"]{background:linear-gradient(135deg,rgba(154,101,219,.19),rgba(17,10,25,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="uncommon"] .badge-index-row{background:linear-gradient(135deg,rgba(98,213,139,.16),rgba(25,28,30,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="rare"] .badge-index-row{background:linear-gradient(135deg,rgba(94,167,255,.17),rgba(25,28,32,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="epic"] .badge-index-row{background:linear-gradient(135deg,rgba(170,121,255,.18),rgba(27,25,32,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="legendary"] .badge-index-row{background:linear-gradient(135deg,rgba(255,216,77,.17),rgba(31,29,23,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="mythic"] .badge-index-row{background:linear-gradient(135deg,rgba(255,77,99,.17),rgba(31,24,26,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="ultra"] .badge-index-row{background:linear-gradient(135deg,rgba(255,114,198,.17),rgba(31,24,30,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="godly"] .badge-index-row{background:linear-gradient(135deg,rgba(235,237,241,.15),rgba(25,26,29,.90) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="supreme"] .badge-index-row{background:linear-gradient(135deg,rgba(255,84,84,.11),rgba(94,167,255,.09) 38%,rgba(170,121,255,.11) 68%,rgba(25,26,30,.88))!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="omnipotent"] .badge-index-row{background:linear-gradient(135deg,rgba(150,154,162,.13),rgba(5,5,7,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="eternal"] .badge-index-row{background:linear-gradient(135deg,rgba(217,121,50,.18),rgba(27,25,23,.90) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="absolute"] .badge-index-row{background:linear-gradient(135deg,rgba(154,101,219,.19),rgba(17,10,25,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-visible{
+  transform:translateY(-2px)!important;
+  filter:brightness(1.12)!important;
+  border-color:rgba(255,255,255,.22)!important;
+  box-shadow:0 8px 18px rgba(0,0,0,.22)!important;
+  outline:none!important;
+}
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover *,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-visible *{
+  opacity:1!important;
+}
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
 }
@@ -2142,13 +2169,29 @@ function mountBadgeSortControl(){
 }
 
 function renderedLeaderboardRow(profile,rank,summary,roll=null){
-  const account={id:profile.id,name:profile.username||'Player'};
-  const row=nativeApp()?.createLeaderboardRow?.(account,rank,summary);
-  if(row){
-    decorateLeaderboardRoll(row,summary);
-    patchRenderedProfileLink(row,profile);
-    addReplayRollButton(row,summary,profile,roll?.id);
+  const row=document.createElement('div');
+  row.className='chordle-leaderboard-roll-row';
+
+  const player=document.createElement('div');
+  player.className='chordle-leaderboard-roll-player';
+
+  const rankEl=document.createElement('span');
+  rankEl.className='chordle-leaderboard-roll-rank';
+  rankEl.textContent='#'+rank;
+
+  const profileLink=makeProfileLink(profile);
+  player.append(rankEl,profileLink);
+
+  const host=document.createElement('div');
+  host.className='profile-best-wrap chordle-leaderboard-card-host';
+
+  const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
+  if(card){
+    addReplayRollButton(card,summary,profile||{id:roll?.user_id,username:'Player'},roll?.id);
+    host.appendChild(card);
   }
+
+  row.append(player,host);
   return row;
 }
 
@@ -2373,8 +2416,30 @@ async function refreshBadgeExistCounts(){
     entry.dataset.chordleRarity=rarity;
     const discoveredBySomeone=count>0;
     const ownedByViewer=ownedKeys.has(key);
-    entry.classList.toggle('chordle-publicly-discovered',discoveredBySomeone&&!ownedByViewer);
+    const publicButUnowned=discoveredBySomeone&&!ownedByViewer;
+    entry.classList.toggle('chordle-publicly-discovered',publicButUnowned);
     entry.classList.toggle('chordle-never-discovered',!discoveredBySomeone&&!ownedByViewer);
+
+    if(publicButUnowned){
+      row.tabIndex=0;
+      row.setAttribute('role','link');
+      row.setAttribute('aria-label','View discovered badge details');
+      if(row.dataset.chordlePublicBadgeWired!=='1'){
+        row.dataset.chordlePublicBadgeWired='1';
+        const openPublicBadge=event=>{
+          if(event.type==='keydown'&&!['Enter',' '].includes(event.key))return;
+          event.preventDefault();
+          event.stopPropagation();
+          nativeApp()?.openBadgeDetailByKey?.(key);
+        };
+        row.addEventListener('click',openPublicBadge,true);
+        row.addEventListener('keydown',openPublicBadge,true);
+      }
+    }else if(!ownedByViewer){
+      row.removeAttribute('tabindex');
+      row.removeAttribute('role');
+      row.removeAttribute('aria-label');
+    }
   });
 }
 
