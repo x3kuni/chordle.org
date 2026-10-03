@@ -148,7 +148,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=leaderboard-pr4-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=credits-public-ids-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
