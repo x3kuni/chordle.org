@@ -30,6 +30,8 @@ const state = {
   leaderboardTodayProfiles: new Map(),
   anonymousPromptedDay: null,
   externalReplay: null,
+  todayNewBadgeKeys: new Set(),
+  firstDiscoveryKeys: new Set(),
   dayKey: localDayKey()
 };
 
@@ -335,6 +337,26 @@ function ensureFirstDiscoveryTag(card,show){
   card.dataset.firstDiscovery='true';
 }
 
+function applyCachedDiscoveryTags(){
+  const cards=[...document.querySelectorAll('#badges .badge[data-badge-key]')];
+  if(!cards.length)return;
+
+  if(state.externalReplay){
+    for(const card of cards){
+      ensureNewTag(card,false);
+      ensureFirstDiscoveryTag(card,false);
+    }
+    return;
+  }
+
+  for(const card of cards){
+    const key=String(card.dataset.badgeKey||'');
+    const nativeNew=!!card.querySelector('.badge-new-tag');
+    ensureNewTag(card,state.todayNewBadgeKeys.has(key)||nativeNew);
+    ensureFirstDiscoveryTag(card,state.firstDiscoveryKeys.has(key));
+  }
+}
+
 function discoveredOnCurrentLocalDay(value){
   if(!value)return false;
   const d=new Date(value);
@@ -384,8 +406,16 @@ async function syncFirstDiscoveryTags({allowProvisional=true,all=false}={}){
     const provisional=allowProvisional&&!row&&nativeNew;
 
     ensureNewTag(card,isNewToday||provisional);
-    if(isNewToday||provisional)keysNeedingFirstCheck.add(key);
-    else ensureFirstDiscoveryTag(card,false);
+    if(isNewToday){
+      state.todayNewBadgeKeys.add(key);
+      keysNeedingFirstCheck.add(key);
+    }else if(provisional){
+      keysNeedingFirstCheck.add(key);
+    }else{
+      state.todayNewBadgeKeys.delete(key);
+      state.firstDiscoveryKeys.delete(key);
+      ensureFirstDiscoveryTag(card,false);
+    }
   }
 
   if(!keysNeedingFirstCheck.size)return;
@@ -410,7 +440,10 @@ async function syncFirstDiscoveryTags({allowProvisional=true,all=false}={}){
     if(!keysNeedingFirstCheck.has(key))continue;
     const first=firstByKey.get(key);
     const provisional=allowProvisional&&!first&&!!card.querySelector('.badge-new-tag');
-    ensureFirstDiscoveryTag(card,first?.user_id===uid||provisional);
+    const confirmed=first?.user_id===uid;
+    if(confirmed)state.firstDiscoveryKeys.add(key);
+    else if(first)state.firstDiscoveryKeys.delete(key);
+    ensureFirstDiscoveryTag(card,confirmed||provisional);
   }
 }
 
@@ -423,7 +456,10 @@ function wireFirstDiscoveryBadges(){
   const badges=document.getElementById('badges');
   if(!badges)return;
   const observer=new MutationObserver(records=>{
-    if(records.some(record=>record.addedNodes.length))scheduleFirstDiscoverySync({allowProvisional:true,all:false});
+    if(records.some(record=>record.addedNodes.length)){
+      applyCachedDiscoveryTags();
+      scheduleFirstDiscoverySync({allowProvisional:true,all:false});
+    }
   });
   observer.observe(badges,{childList:true,subtree:true});
   scheduleFirstDiscoverySync({allowProvisional:false,all:true});
@@ -755,11 +791,42 @@ async function getOwnedBadges(userId){
 
 async function syncOwnedBadgesToLocal(){
   const uid=state.session?.user?.id;
-  if(!uid)return [];
+  if(!uid){
+    state.todayNewBadgeKeys=new Set();
+    state.firstDiscoveryKeys=new Set();
+    return [];
+  }
+
   const owned=await getOwnedBadges(uid);
   const keys=owned.map(b=>String(b.badge_key));
+  state.todayNewBadgeKeys=new Set(
+    owned
+      .filter(row=>discoveredOnCurrentLocalDay(row.discovered_at))
+      .map(row=>String(row.badge_key))
+  );
+  state.firstDiscoveryKeys=new Set();
+
+  if(state.todayNewBadgeKeys.size){
+    const todayKeys=[...state.todayNewBadgeKeys];
+    const {data:owners,error}=await supabase.from('chordle_user_badges')
+      .select('user_id,badge_key,discovered_at')
+      .in('badge_key',todayKeys)
+      .order('discovered_at',{ascending:true});
+    if(!error){
+      const firstByKey=new Map();
+      for(const row of (owners||[])){
+        const key=String(row.badge_key||'');
+        if(key&&!firstByKey.has(key))firstByKey.set(key,row);
+      }
+      for(const key of todayKeys){
+        if(firstByKey.get(key)?.user_id===uid)state.firstDiscoveryKeys.add(key);
+      }
+    }
+  }
+
   try{localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify(keys));}catch{}
   nativeApp()?.setOwnedBadgeKeys?.(keys);
+  applyCachedDiscoveryTags();
   return owned;
 }
 
