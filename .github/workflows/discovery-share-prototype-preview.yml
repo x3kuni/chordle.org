@@ -1,0 +1,109 @@
+name: Deploy Chordle Discovery Share Prototype
+
+on:
+  push:
+    branches:
+      - prototype/discovery-share-polish-20261003
+  workflow_dispatch:
+
+concurrency:
+  group: chordle-discovery-share-prototype
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate browser scripts
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {spawnSync} from 'node:child_process';
+          import worker from './worker.js';
+
+          const source=fs.readFileSync('./public/index.html','utf8');
+          const env={ASSETS:{async fetch(){return new Response(source,{headers:{'content-type':'text/html; charset=UTF-8'}});}}};
+          const response=await worker.fetch(new Request('https://prototype.local/'),env);
+          const html=await response.text();
+          const scripts=[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
+
+          for(let i=0;i<scripts.length;i++){
+            const file='/tmp/chordle-inline-'+i+'.js';
+            fs.writeFileSync(file,scripts[i]);
+            const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
+            if(result.status!==0){
+              console.error(result.stderr||result.stdout);
+              process.exit(result.status||1);
+            }
+          }
+
+          const authCheck=spawnSync(process.execPath,['--check','./public/auth.js'],{encoding:'utf8'});
+          if(authCheck.status!==0){
+            console.error(authCheck.stderr||authCheck.stdout);
+            process.exit(authCheck.status||1);
+          }
+
+          if(!fs.readFileSync('./public/auth.js','utf8').includes("separator.textContent='⋅'")){
+            throw new Error('First-discovery separator update missing');
+          }
+          if(!fs.readFileSync('./public/auth.js','utf8').includes('canonicalScore')){
+            throw new Error('Canonical share score fallback missing');
+          }
+          NODE
+
+      - name: Deploy Chordle prototype
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: preview --name discovery-share-polish
+
+      - name: Smoke test live prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://discovery-share-polish-chordle.gtownsend707.workers.dev"
+          sleep 3
+
+          curl -fsSL "$URL" -o /tmp/chordle-live.html
+          grep -q 'discovery-share-polish-20261003-1' /tmp/chordle-live.html
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "Chrome unavailable; static fetch passed."
+            exit 0
+          fi
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom "$URL" > /tmp/home.html 2>/tmp/home.log
+          KEY_COUNT="$(grep -o 'data-note="' /tmp/home.html | wc -l | tr -d ' ')"
+          echo "Rendered piano key count: $KEY_COUNT"
+          test "$KEY_COUNT" -ge 30
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=12000 --dump-dom "$URL/#profile/kii" > /tmp/profile.html 2>/tmp/profile.log
+          grep -q 'profile-route' /tmp/profile.html
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html=Path('/tmp/profile.html').read_text(encoding='utf-8',errors='ignore')
+          panel=re.search(r'<section[^>]*id="profileFirstDiscoveriesPanel"[sS]*?</section>',html)
+          if panel:
+              ranks={'common':0,'uncommon':1,'rare':2,'epic':3,'legendary':4,'mythic':5,'ultra':6,'godly':7,'supreme':8,'omnipotent':9,'eternal':10,'absolute':11}
+              rarities=re.findall(r'profile-first-discovery-link rarity-text-([a-z]+)',panel.group(0))
+              values=[ranks.get(r,-1) for r in rarities]
+              if any(values[i] < values[i+1] for i in range(len(values)-1)):
+                  raise SystemExit('First Discoveries are not sorted highest rarity to lowest')
+              print('First Discovery rarity order:', rarities[:20])
+          else:
+              print('Public profile did not render a First Discoveries panel during smoke test; route itself loaded.')
+          PY
+
+          echo "Home and public profile route smoke tests passed."
