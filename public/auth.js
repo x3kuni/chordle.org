@@ -2163,6 +2163,7 @@ function wireNavigation(){
         return;
       }
 
+      if(await renderRollHistoryRoute())return;
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       else if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -2226,6 +2227,7 @@ async function boot(){
   }
 
   if(isReplayHash())await loadReplayFromHash();
+  else if(await renderRollHistoryRoute()){}
   else if(renderInfoRoute()){}
   else if(location.hash.startsWith('#profile'))await renderProfile();
   else if(location.hash==='#leaderboard')await renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -2239,6 +2241,7 @@ async function boot(){
       else{state.profile=null;state.todayRoll=null;}
       syncAnonymousAccountAttention();
       if(isReplayHash()){await loadReplayFromHash();return;}
+      if(await renderRollHistoryRoute())return;
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
@@ -2257,4 +2260,4 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
+window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,renderRollHistoryRoute,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
