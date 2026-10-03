@@ -22,6 +22,62 @@ export default {
       html = html.replace("</head>", socialMeta + "\n</head>");
     }
     html = html.replace("return hash==='#home' || hash==='' || hash==='#';", "return hash==='#home' || hash==='' || hash==='#' || hash.startsWith('#replay/');");
+    // Global Chordle day: midnight in America/Los_Angeles for every player.
+    // The helper is injected before dailyRoll/localDayKey are defined. The date
+    // heading itself uses a literal time zone because refreshChordDate runs earlier.
+    const pacificHelperMarker = "  const LOCAL_DAILY_ROLL_KEY='chordle_generated_daily_roll_v1';";
+    if (html.includes(pacificHelperMarker) && !html.includes('CHORDLE_PACIFIC_DAY_FORMATTER')) {
+      const pacificHelpers = `
+  const CHORDLE_PACIFIC_DAY_FORMATTER=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'});
+  const CHORDLE_PACIFIC_CLOCK_FORMATTER=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  function chordlePacificParts(date=new Date(),clock=false){
+    const out={};
+    const formatter=clock?CHORDLE_PACIFIC_CLOCK_FORMATTER:CHORDLE_PACIFIC_DAY_FORMATTER;
+    for(const part of formatter.formatToParts(date)) if(part.type!=='literal') out[part.type]=part.value;
+    return out;
+  }
+  function chordlePacificDayKey(date=new Date()){
+    const p=chordlePacificParts(date,false);
+    return p.year+'-'+p.month+'-'+p.day;
+  }
+  function chordleNextPacificMidnight(now=new Date()){
+    const p=chordlePacificParts(now,false);
+    const tomorrow=new Date(Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day)+1,12,0,0));
+    const y=tomorrow.getUTCFullYear(),m=tomorrow.getUTCMonth()+1,d=tomorrow.getUTCDate();
+    for(let utcHour=6;utcHour<=10;utcHour++){
+      const candidate=new Date(Date.UTC(y,m-1,d,utcHour,0,0));
+      const q=chordlePacificParts(candidate,true);
+      if(Number(q.year)===y&&Number(q.month)===m&&Number(q.day)===d&&Number(q.hour)===0&&Number(q.minute)===0) return candidate;
+    }
+    return new Date(Date.UTC(y,m-1,d,8,0,0));
+  }
+`;
+      html = html.replace(pacificHelperMarker, pacificHelpers + '\n' + pacificHelperMarker);
+    }
+
+    html = html.replace(
+      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});",
+      "    chordDateEl.textContent = new Date().toLocaleDateString(undefined,{timeZone:'America/Los_Angeles',weekday:'long',year:'numeric',month:'long',day:'numeric'});"
+    );
+    html = html.replace(
+      /    const d=new Date\(\);\n    const day=`\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`;/,
+      "    const day=chordlePacificDayKey();"
+    );
+    html = html.replace(
+      /  function localDayKey\(d=new Date\(\)\)\{ return `\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`; \}/g,
+      "  function localDayKey(d=new Date()){ return chordlePacificDayKey(d); }"
+    );
+    html = html.replace(
+      "    const next=new Date(now); next.setHours(24,0,0,0);",
+      "    const next=chordleNextPacificMidnight(now);"
+    );
+
+    // De-duplicate only the two final whole-chord analysis badges. The existing
+    // rarity-based reveal cadence and all waits remain untouched.
+    html = html.replace(
+      "    const finalBadges=wholeChordBadges(notes);",
+      "    const finalBadges=[...new Map(wholeChordBadges(notes).map(b=>[String(b?.key||b?.name||''),b])).values()];"
+    );
 
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
     // Chordle's main IIFE. auth.js uses these instead of recreating those panels.
@@ -270,7 +326,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=render-bridge-hotfix-20261003-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=current-main-polish-20261003-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
