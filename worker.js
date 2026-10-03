@@ -25,8 +25,12 @@ export default {
 
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
     // Chordle's main IIFE. auth.js uses these instead of recreating those panels.
-    const simMarker = 'window.__CHORDLE_SIM__={analyze,wholeChordBadges,calculateRollTotal,randomRoll,badgeRarityFromPoints};';
-    if (html.includes(simMarker)) {
+    // Match the SIM export by its stable prefix instead of the entire object.
+    // The export gains helpers over time; exact-string matching can silently disable
+    // the renderer bridge and make every Supabase-backed view appear empty.
+    const simMarkerMatch = html.match(/window\.__CHORDLE_SIM__=\{analyze,wholeChordBadges,calculateRollTotal,randomRoll,badgeRarityFromPoints[^;]*\};/);
+    const simMarker = simMarkerMatch ? simMarkerMatch[0] : null;
+    if (simMarker) {
       const bridge = `
   function chordleRestoreCompletedRoll(summary){
     try{
@@ -266,7 +270,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=discord-embed-pr13-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=render-bridge-hotfix-20261003-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
