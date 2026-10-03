@@ -147,14 +147,12 @@ async function getOwnedBadges(userId){
 
 async function syncOwnedBadgesToLocal(){
   const uid=state.session?.user?.id;
-  if(!uid)return;
+  if(!uid)return [];
   const owned=await getOwnedBadges(uid);
-  try{
-    const old=JSON.parse(localStorage.getItem(SEEN_BADGES_KEY)||"[]");
-    const merged=new Set(Array.isArray(old)?old:[]);
-    owned.forEach(b=>merged.add(String(b.badge_key)));
-    localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify([...merged]));
-  }catch{}
+  const keys=owned.map(b=>String(b.badge_key));
+  try{localStorage.setItem(SEEN_BADGES_KEY,JSON.stringify(keys));}catch{}
+  nativeApp()?.setOwnedBadgeKeys?.(keys);
+  return owned;
 }
 
 function currentDailyNotes(){
@@ -254,64 +252,19 @@ function renderRestoredBadge(badge,notes){
 }
 
 function restoreDailyRoll(roll){
-  if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return;
+  if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return false;
+  const summary=rollSummary(roll);
+  if(!summary)return false;
   state.restoring=true;
   try{
-    const notes=roll.notes.map(Number);
-    writeJson(DAILY_LOCAL_KEY,{day:roll.roll_day,notes});
+    writeJson(DAILY_LOCAL_KEY,{day:roll.roll_day,notes:summary.notes});
     try{
       localStorage.setItem(LIFETIME_DAY_KEY,roll.roll_day);
       if(state.profile)localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(Number(state.profile.lifetime_score)||0)));
     }catch{}
-
-    const slots=document.getElementById("noteSlots");
-    if(slots){
-      if(slots.children.length!==6){
-        slots.innerHTML="";
-        for(let i=0;i<6;i++){const d=document.createElement("div");d.className="note-pill";slots.appendChild(d);}
-      }
-      [...slots.children].forEach((pill,i)=>{
-        pill.className="note-pill revealed";
-        pill.textContent=noteName(notes[i]);
-      });
-    }
-
-    const chordName=document.getElementById("chordName");
-    const chordDetail=document.getElementById("chordDetail");
-    if(chordName)chordName.textContent=roll.chord_name||"Today's chord";
-    if(chordDetail)chordDetail.textContent=roll.chord_detail||"Your chord has already been generated today.";
-
-    const scoreEl=document.getElementById("score");
-    const rarityEl=document.getElementById("scoreRarity");
-    if(scoreEl)scoreEl.textContent=formatScore(roll.score);
-    if(rarityEl)rarityEl.textContent=String(roll.rarity||"").replace(/-/g," ").replace(/\b\w/g,m=>m.toUpperCase());
-
-    document.getElementById("chordCard")?.classList.add("metadata-visible");
-    document.getElementById("scoreBox")?.classList.add("metadata-visible");
-    const scoreBox=document.getElementById("scoreBox");
-    if(scoreBox&&roll.rarity)scoreBox.classList.add("rarity-"+String(roll.rarity).toLowerCase());
-
-    const badgesEl=document.getElementById("badges");
-    if(badgesEl){
-      badgesEl.replaceChildren();
-      badgeObjectsForNotes(notes).forEach(b=>badgesEl.appendChild(renderRestoredBadge(b,notes)));
-    }
-
-    document.querySelectorAll(".key").forEach(k=>k.classList.remove("rolled","pending-roll","reveal-accent"));
-    notes.forEach(n=>document.querySelectorAll(`.key[data-note="${n}"]`).forEach(k=>k.classList.add("rolled")));
-
-    const next=document.getElementById("nextChord");
-    next?.classList.add("visible");
-    const revealBtn=document.getElementById("revealBtn");
-    if(revealBtn){
-      revealBtn.disabled=true;
-      revealBtn.textContent="Today's chord complete";
-    }
-    const reroll=document.getElementById("rerollBtn");
-    if(reroll)reroll.disabled=true;
-    const audio=document.getElementById("audioBtn");
-    if(audio)audio.disabled=true;
+    const restored=nativeApp()?.restoreCompletedRoll?.(summary);
     syncLifetimeDisplay();
+    return restored!==false;
   }finally{
     setTimeout(()=>{state.restoring=false;},0);
   }
