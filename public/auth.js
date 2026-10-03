@@ -86,9 +86,10 @@ html.chordle-info-route .admin-luck{display:none!important}
 .chordle-update-title{margin:0 0 10px;color:#eef0f4;font-size:19px;font-weight:850}
 .chordle-update-body{margin:0!important;color:#b9bdc5}
 .ca-save-overlay{background:rgba(0,0,0,.52);backdrop-filter:blur(5px)}
-.ca-save-overlay .ca-modal{width:min(450px,100%);text-align:center;border-radius:14px}
-.ca-save-overlay .ca-modal h2{margin-top:8px;font-size:27px}
+.ca-save-overlay .ca-modal{position:relative;width:min(450px,100%);text-align:center;border-radius:14px}
+.ca-save-overlay .ca-modal h2{margin:6px 34px 7px;text-align:center;font-size:27px}
 .ca-save-overlay .ca-sub{max-width:340px;margin-left:auto;margin-right:auto}
+.ca-save-overlay .ca-x{position:absolute;top:9px;right:10px;float:none;width:26px;height:26px;padding:0;font-size:17px;line-height:24px;text-align:center}
 .ca-save-choice{display:flex;gap:10px;margin-top:20px}
 .ca-save-choice .ca-btn{flex:1;padding:12px}
 #profileNavBtn.chordle-profile-login-pulse{
@@ -97,8 +98,15 @@ html.chordle-info-route .admin-luck{display:none!important}
   animation:chordleProfileLoginPulse 1.55s ease-in-out infinite;
 }
 @keyframes chordleProfileLoginPulse{
-  0%,100%{box-shadow:0 0 0 1px rgba(210,216,228,.28),0 0 5px rgba(220,225,238,.10)}
-  50%{box-shadow:0 0 0 2px rgba(226,231,242,.72),0 0 14px rgba(220,225,238,.30)}
+  0%,100%{transform:scale(1);box-shadow:0 0 0 1px rgba(210,216,228,.28),0 0 5px rgba(220,225,238,.10)}
+  50%{transform:scale(1.06);box-shadow:0 0 0 2px rgba(226,231,242,.78),0 0 16px rgba(220,225,238,.36)}
+}
+#chordle-profile-auth-slot [data-ca="signup"].chordle-create-account-pulse{
+  animation:chordleCreateAccountPulse 1.35s ease-in-out infinite;
+}
+@keyframes chordleCreateAccountPulse{
+  0%,100%{transform:scale(1);box-shadow:0 0 0 1px rgba(255,255,255,.16),0 0 5px rgba(255,255,255,.08)}
+  50%{transform:scale(1.045);box-shadow:0 0 0 2px rgba(255,255,255,.80),0 0 18px rgba(255,255,255,.30)}
 }
 @media(max-width:620px){
   .ca-server-row{grid-template-columns:40px minmax(0,1fr) 105px}.ca-server-value{font-size:12px}
@@ -202,6 +210,11 @@ function infoProfileLink(username,label=username){
   const a=document.createElement('a');
   a.href='#profile/'+encodeURIComponent(username);
   a.textContent=label;
+  void fetchProfileTarget(username).then(profile=>{
+    if(!profile)return;
+    a.href=profileHref(profile);
+    applyNameColor(a,profile.name_color,profile.id);
+  }).catch(()=>{});
   return a;
 }
 
@@ -312,11 +325,21 @@ function modal(inner,onClose=null){
 }
 
 function highlightProfileLogin(){
+  if(state.session?.user)return;
   document.getElementById('profileNavBtn')?.classList.add('chordle-profile-login-pulse');
 }
 
 function clearProfileLoginHighlight(){
-  document.getElementById('profileNavBtn')?.classList.remove('chordle-profile-login-pulse');
+  const nav=document.getElementById('profileNavBtn');
+  if(!nav)return;
+  nav.classList.toggle('chordle-profile-login-pulse',!state.session?.user);
+}
+
+function syncAnonymousAccountAttention(){
+  const anonymous=!state.session?.user;
+  document.getElementById('profileNavBtn')?.classList.toggle('chordle-profile-login-pulse',anonymous);
+  const signup=document.querySelector('#chordle-profile-auth-slot [data-ca="signup"]');
+  if(signup)signup.classList.toggle('chordle-create-account-pulse',anonymous&&location.hash.startsWith('#profile'));
 }
 
 function unlockExistingPages(){
@@ -605,12 +628,13 @@ function mountAccountControls(){
 
   if(!state.session?.user){
     slot.innerHTML='<div class="ca-account-title">Chordle Account</div><div class="ca-account-row"><button class="ca-btn ca-primary" data-ca="signup">Create Account</button><button class="ca-btn" data-ca="login">Log In</button></div>';
-    slot.querySelector('[data-ca="signup"]').onclick=showSignup;
-    slot.querySelector('[data-ca="login"]').onclick=showLogin;
+    slot.querySelector('[data-ca="signup"]').onclick=()=>showSignup();
+    slot.querySelector('[data-ca="login"]').onclick=()=>showLogin();
   }else{
     slot.innerHTML='<div class="ca-account-title">Chordle Account</div><div class="ca-account-row"><div class="ca-account-user">Logged in as '+esc(username())+'</div><button class="ca-btn" data-ca="logout">Log Out</button></div>';
-    slot.querySelector('[data-ca="logout"]').onclick=logout;
+    slot.querySelector('[data-ca="logout"]').onclick=()=>logout();
   }
+  syncAnonymousAccountAttention();
 }
 
 function renderBestRoll(best){
@@ -1055,6 +1079,7 @@ function showSignup(existingOverlay=null){
 
 function showAnonymousSavePrompt(){
   if(state.session?.user)return;
+  highlightProfileLogin();
   const pending=captureAnonymousRoll();
   if(!pending)return;
   if(document.querySelector('.ca-save-overlay'))return;
@@ -1071,7 +1096,8 @@ function showAnonymousSavePrompt(){
 async function logout(){
   await supabase.auth.signOut();
   state.session=null;state.profile=null;state.todayRoll=null;
-  renderProfile();
+  syncAnonymousAccountAttention();
+  await renderProfile();
 }
 
 async function initializeSignedInUser(user){
@@ -1178,6 +1204,7 @@ async function boot(){
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user);
   syncLifetimeDisplay();
+  syncAnonymousAccountAttention();
   if(!data.session?.user && document.getElementById("nextChord")?.classList.contains("visible")){
     setTimeout(showAnonymousSavePrompt,250);
   }
@@ -1193,6 +1220,7 @@ async function boot(){
       state.session=session;
       if(session?.user)await initializeSignedInUser(session.user);
       else{state.profile=null;state.todayRoll=null;}
+      syncAnonymousAccountAttention();
       if(renderInfoRoute())return;
       if(location.hash.startsWith('#profile'))renderProfile();
       if(location.hash==='#leaderboard')renderLeaderboard(state.leaderboardTab,{refreshWinner:true});
