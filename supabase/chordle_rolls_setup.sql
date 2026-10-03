@@ -26,7 +26,7 @@ create table if not exists public.daily_rolls (
 );
 
 create table if not exists public.daily_roll_badges (
-  roll_id uuid not null references public.daily_rolls(id) on delete cascade,
+  roll_id bigint not null references public.daily_rolls(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   badge_key text not null,
   badge_name text not null,
@@ -44,7 +44,7 @@ create table if not exists public.user_badges (
   badge_description text,
   rarity text not null,
   points bigint not null check (points >= 0),
-  first_roll_id uuid references public.daily_rolls(id) on delete set null,
+  first_roll_id bigint references public.daily_rolls(id) on delete set null,
   discovered_at timestamptz not null default now(),
   primary key (user_id, badge_key)
 );
