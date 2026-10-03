@@ -293,59 +293,124 @@ function mountAccountControls(){
 }
 
 function renderBestRoll(best){
-  const el=document.getElementById("profileBestRoll");
+  const el=document.getElementById('profileBestRoll');
   if(!el)return;
+  el.replaceChildren();
   if(!best){
     el.innerHTML='<div class="profile-badges-empty">No completed rolls yet.</div>';
     return;
   }
-  el.innerHTML=`<div class="ca-best-roll"><div class="ca-best-roll-name">${esc(best.chord_name||"Chord")}</div><div class="ca-best-roll-meta">${formatScore(best.score)} points · ${esc(String(best.rarity||"").replace(/-/g," "))}</div></div>`;
+  const summary=rollSummary(best);
+  const card=summary?nativeApp()?.createRollCard?.(summary,{showRarity:true}):null;
+  if(card){
+    el.appendChild(card);
+    nativeApp()?.queueMockScoreFit?.(el);
+  }else{
+    el.innerHTML='<div class="profile-badges-empty">Unable to render this roll.</div>';
+  }
 }
 
 function renderTopBadges(rows){
-  const el=document.getElementById("profileTopBadges");
+  const el=document.getElementById('profileTopBadges');
   if(!el)return;
   el.replaceChildren();
   if(!rows.length){
     el.innerHTML='<div class="profile-badges-empty">No collectible badges yet.</div>';
     return;
   }
-  rows.slice(0,10).forEach(b=>{
-    const row=document.createElement("div");
-    row.className=`badge-index-row badge ${String(b.rarity||"common").toLowerCase()}`;
-    row.innerHTML=`<div class="badge-index-row-name badge-name">${esc(b.badge_name)}</div><div class="badge-index-row-score points">+${formatScore(b.points)}</div>`;
-    el.appendChild(row);
-  });
+  for(const saved of rows.slice(0,10)){
+    const catalog=nativeApp()?.getCatalogBadgeByKey?.(String(saved.badge_key));
+    const badge=catalog||{
+      key:String(saved.badge_key),
+      name:saved.badge_name||'Badge',
+      desc:saved.badge_description||'',
+      rarity:String(saved.rarity||'common').toLowerCase(),
+      points:Number(saved.points)||0
+    };
+    const row=nativeApp()?.createProfileBadgeRow?.(badge);
+    if(row)el.appendChild(row);
+  }
+  nativeApp()?.queueCompactBadgeTitleFit?.(el);
+}
+
+function bindProfileColorControl(targetProfile,ownProfile){
+  const control=document.getElementById('profileColorControl');
+  const button=document.getElementById('profileColorButton');
+  const fill=document.getElementById('profileColorFill');
+  const menu=document.getElementById('profileColorMenu');
+  if(!control||!button||!fill||!menu)return;
+  control.hidden=!ownProfile;
+  if(!ownProfile){menu.hidden=true;button.setAttribute('aria-expanded','false');return;}
+
+  const current=color(targetProfile?.name_color)||PROFILE_NAME_COLORS.white;
+  fill.style.setProperty('--profile-color-fill',current);
+  menu.replaceChildren();
+  for(const [key,value] of Object.entries(PROFILE_NAME_COLORS)){
+    const option=document.createElement('button');
+    option.type='button';
+    option.className='profile-color-option';
+    option.dataset.colorKey=key;
+    option.style.setProperty('--option-color',value);
+    option.title=key[0].toUpperCase()+key.slice(1);
+    option.setAttribute('aria-label',option.title+' username');
+    option.classList.toggle('selected',value.toLowerCase()===current.toLowerCase());
+    option.addEventListener('click',async event=>{
+      event.stopPropagation();
+      const uid=state.session?.user?.id;
+      if(!uid)return;
+      const {data,error}=await supabase.from('profiles').update({name_color:value}).eq('id',uid).select('id,username,name_color,lifetime_score,joined_at').single();
+      if(error){console.warn('Chordle name color:',error.message);return;}
+      state.profile=data;
+      fill.style.setProperty('--profile-color-fill',value);
+      document.querySelectorAll('[data-profile-id="'+CSS.escape(uid)+'"]').forEach(el=>applyNameColor(el,value,uid));
+      applyNameColor(document.getElementById('profileName'),value,uid);
+      menu.hidden=true;
+      button.setAttribute('aria-expanded','false');
+    });
+    menu.appendChild(option);
+  }
+
+  if(button.dataset.supabaseBound!=='1'){
+    button.dataset.supabaseBound='1';
+    button.addEventListener('click',event=>{
+      event.stopPropagation();
+      menu.hidden=!menu.hidden;
+      button.setAttribute('aria-expanded',menu.hidden?'false':'true');
+    });
+  }
 }
 
 async function renderProfile(){
   unlockExistingPages();
   mountAccountControls();
 
-  const nameEl=document.getElementById("profileName");
-  const joinEl=document.getElementById("profileJoinDate");
-  const lifetimeEl=document.getElementById("profileLifetimeScore");
-  const colorControl=document.getElementById("profileColorControl");
-  const user=state.session?.user;
+  const nameEl=document.getElementById('profileName');
+  const joinEl=document.getElementById('profileJoinDate');
+  const lifetimeEl=document.getElementById('profileLifetimeScore');
+  const targetKey=profileTargetFromHash();
+  const target=targetKey?await fetchProfileTarget(targetKey):null;
+  const ownProfile=!!(target?.id && state.session?.user?.id===target.id);
 
-  if(!user){
-    if(nameEl){nameEl.textContent="Profile";nameEl.style.color="";}
-    if(joinEl)joinEl.textContent="Log in or create an account to view your profile";
-    if(lifetimeEl)lifetimeEl.textContent="—";
-    if(colorControl)colorControl.hidden=true;
-    renderBestRoll(null);renderTopBadges([]);
+  if(!target){
+    if(nameEl){nameEl.textContent='Profile';nameEl.classList.add('adaptive-name-color');nameEl.style.removeProperty('--account-name-color');}
+    if(joinEl)joinEl.textContent=state.session?.user?'Profile unavailable':'Log in or create an account to view your profile';
+    if(lifetimeEl)lifetimeEl.textContent='—';
+    bindProfileColorControl(null,false);
+    renderBestRoll(null);
+    renderTopBadges([]);
+    mountAccountControls();
     return;
   }
 
-  await loadProfile(user,1);
-  if(nameEl){nameEl.textContent=username(user);nameEl.style.color=color(state.profile?.name_color);}
-  if(joinEl)joinEl.textContent=joined(state.profile?.joined_at||user.created_at);
-  if(lifetimeEl)lifetimeEl.textContent=formatScore(state.profile?.lifetime_score);
-  if(colorControl)colorControl.hidden=true;
+  if(ownProfile)state.profile=target;
+  if(nameEl){nameEl.textContent=target.username||'Player';applyNameColor(nameEl,target.name_color,target.id);}
+  if(joinEl)joinEl.textContent=joined(target.joined_at);
+  if(lifetimeEl)lifetimeEl.textContent=formatScore(target.lifetime_score);
+  bindProfileColorControl(target,ownProfile);
 
   const [{data:best},{data:badges}]=await Promise.all([
-    supabase.from("chordle_rolls").select("*").eq("user_id",user.id).order("score",{ascending:false}).limit(1).maybeSingle(),
-    supabase.from("chordle_user_badges").select("*").eq("user_id",user.id).order("points",{ascending:false}).limit(10)
+    supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
+    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false}).limit(10)
   ]);
   renderBestRoll(best||null);
   renderTopBadges(badges||[]);
