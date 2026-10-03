@@ -5,6 +5,7 @@ export default {
     if (!type.includes("text/html")) return response;
 
     let html = await response.text();
+    html = html.replace("return hash==='#home' || hash==='' || hash==='#';", "return hash==='#home' || hash==='' || hash==='#' || hash.startsWith('#replay/');");
 
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
     // Chordle's main IIFE. auth.js uses these instead of recreating those panels.
@@ -249,7 +250,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=daily-tags-roll-replay-pr11-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=separate-replay-route-pr12-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
