@@ -3,6 +3,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = "https://cpfmiszujdyrtadqtdbj.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7KPZYtjYmFP0oXAVkE3KOw_VpTVXsGh";
 
+window.__CHORDLE_SUPABASE_OWNS_UI__=true;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
@@ -433,14 +435,6 @@ function bindProfileColorControl(targetProfile,ownProfile){
     menu.appendChild(option);
   }
 
-  if(button.dataset.supabaseBound!=='1'){
-    button.dataset.supabaseBound='1';
-    button.addEventListener('click',event=>{
-      event.stopPropagation();
-      menu.hidden=!menu.hidden;
-      button.setAttribute('aria-expanded',menu.hidden?'false':'true');
-    });
-  }
 }
 
 async function renderProfile(){
