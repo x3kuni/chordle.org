@@ -92,6 +92,11 @@ export default {
     }
   }
 
+  const __legacyRenderMockProfile=renderMockProfile;
+  const __legacyRenderMockLeaderboard=renderMockLeaderboard;
+  renderMockProfile=(...args)=>window.__CHORDLE_SUPABASE_OWNS_UI__ ? undefined : __legacyRenderMockProfile(...args);
+  renderMockLeaderboard=(...args)=>window.__CHORDLE_SUPABASE_OWNS_UI__ ? undefined : __legacyRenderMockLeaderboard(...args);
+
   window.__CHORDLE_APP__={
     createRollCard:createMockRollCard,
     createLeaderboardRow,
