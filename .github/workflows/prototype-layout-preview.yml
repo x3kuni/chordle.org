@@ -56,6 +56,13 @@ jobs:
               process.exit(result.status||1);
             }
           }
+          const {spawnSync}=await import('node:child_process');
+          const authCheck=spawnSync(process.execPath,['--check','./public/auth.js'],{encoding:'utf8'});
+          if(authCheck.status!==0){
+            console.error('auth.js failed syntax check');
+            console.error(authCheck.stderr||authCheck.stdout);
+            process.exit(authCheck.status||1);
+          }
           NODE
 
       - name: Deploy Chordle layout prototype
@@ -64,3 +71,31 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: preview --name layout-prototype
+
+      - name: Smoke test deployed prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://layout-prototype-chordle.gtownsend707.workers.dev"
+          sleep 3
+          curl -fsSL "$URL" -o /tmp/chordle-live.html
+          grep -q 'id="piano"' /tmp/chordle-live.html
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "Chrome not available; static preview fetch passed."
+            exit 0
+          fi
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=7000 --dump-dom "$URL" > /tmp/chordle-live-dom.html 2>/tmp/chordle-chrome.log || {
+            cat /tmp/chordle-chrome.log
+            exit 1
+          }
+
+          KEY_COUNT="$(grep -o 'data-note="' /tmp/chordle-live-dom.html | wc -l | tr -d ' ')"
+          echo "Rendered piano key count: $KEY_COUNT"
+          if [ "$KEY_COUNT" -lt 30 ]; then
+            echo "Piano did not initialize correctly."
+            cat /tmp/chordle-chrome.log
+            exit 1
+          fi
