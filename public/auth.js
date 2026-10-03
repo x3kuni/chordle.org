@@ -22,7 +22,8 @@ const state = {
   dayKey: localDayKey()
 };
 
-const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];\nconst PROFILE_NAME_COLORS={white:"#f4f5f7",red:"#ff6262",orange:"#ff9f43",yellow:"#ffd84d",green:"#62d58b",blue:"#5ea7ff",purple:"#aa79ff",pink:"#ff72c6"};
+const NOTE_NAMES_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
+const PROFILE_NAME_COLORS={white:"#f4f5f7",red:"#ff6262",orange:"#ff9f43",yellow:"#ffd84d",green:"#62d58b",blue:"#5ea7ff",purple:"#aa79ff",pink:"#ff72c6"};
 
 const style=document.createElement("style");
 style.textContent=`
@@ -62,7 +63,67 @@ function color(v){return typeof v==="string"&&CSS.supports("color",v)?v:"";}
 function joined(v){if(!v)return "Joined —";const d=new Date(v);return Number.isNaN(d.getTime())?"Joined —":"Joined "+d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});}
 function readJson(key){try{return JSON.parse(localStorage.getItem(key)||"null");}catch{return null;}}
 function writeJson(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}
-function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0-9.-]/g,""));return Number.isFinite(n)?n:0;}\n\nfunction nativeApp(){return window.__CHORDLE_APP__||null;}\nfunction titleCaseRarity(v){return String(v||'common').replace(/-/g,' ').replace(/\\b\\w/g,m=>m.toUpperCase());}\nfunction applyNameColor(el,value,userId=''){\n  if(!el)return;\n  el.dataset.profileId=String(userId||'');\n  el.classList.remove('adaptive-name-color','custom-name-color');\n  el.style.removeProperty('--account-name-color');\n  const chosen=color(value);\n  if(!chosen || chosen.toLowerCase()==='#ffffff' || chosen.toLowerCase()==='#f4f5f7'){\n    el.classList.add('adaptive-name-color');\n  }else{\n    el.classList.add('custom-name-color');\n    el.style.setProperty('--account-name-color',chosen);\n  }\n}\nfunction profileHref(id){return id?'#profile/'+encodeURIComponent(id):'#profile';}\nfunction makeProfileLink(profile,extraClass='mock-profile-link'){\n  const a=document.createElement('a');\n  a.className=extraClass;\n  a.href=profileHref(profile?.id);\n  a.textContent=profile?.username||'Player';\n  applyNameColor(a,profile?.name_color,profile?.id);\n  return a;\n}\nfunction profileTargetFromHash(){\n  const hash=location.hash||'';\n  if(!hash.startsWith('#profile/'))return state.session?.user?.id||null;\n  try{return decodeURIComponent(hash.slice(9))||state.session?.user?.id||null;}catch{return state.session?.user?.id||null;}\n}\nasync function fetchProfileTarget(target){\n  if(!target)return null;\n  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(target));\n  let q=supabase.from('profiles').select('id,username,name_color,lifetime_score,joined_at');\n  q=isUuid?q.eq('id',target):q.eq('username',target);\n  const {data,error}=await q.maybeSingle();\n  if(error){console.warn('Chordle profile lookup:',error.message);return null;}\n  return data||null;\n}\nfunction rollSummary(roll){\n  if(!roll||!Array.isArray(roll.notes))return null;\n  const notes=roll.notes.map(Number);\n  const badges=badgeObjectsForNotes(notes);\n  const total=Math.max(0,Math.round(Number(roll.score)||0));\n  const tier=nativeApp()?.scoreTier?.(total);\n  return {\n    notes,badges,score:total,\n    rarity:String(roll.rarity||tier?.id||'common').toLowerCase(),\n    rarityLabel:tier?.label||titleCaseRarity(roll.rarity),\n    chordName:roll.chord_name||'Chord',\n    chordDetail:roll.chord_detail||''\n  };\n}\nfunction patchRenderedProfileLink(root,profile){\n  const a=root?.querySelector?.('.mock-profile-link');\n  if(!a||!profile)return;\n  a.href=profileHref(profile.id);\n  a.textContent=profile.username||'Player';\n  applyNameColor(a,profile.name_color,profile.id);\n}
+function numericText(el){const n=Number(String(el?.textContent||"").replace(/[^0-9.-]/g,""));return Number.isFinite(n)?n:0;}
+
+function nativeApp(){return window.__CHORDLE_APP__||null;}
+function titleCaseRarity(v){return String(v||'common').replace(/-/g,' ').replace(/\\b\\w/g,m=>m.toUpperCase());}
+function applyNameColor(el,value,userId=''){
+  if(!el)return;
+  el.dataset.profileId=String(userId||'');
+  el.classList.remove('adaptive-name-color','custom-name-color');
+  el.style.removeProperty('--account-name-color');
+  const chosen=color(value);
+  if(!chosen || chosen.toLowerCase()==='#ffffff' || chosen.toLowerCase()==='#f4f5f7'){
+    el.classList.add('adaptive-name-color');
+  }else{
+    el.classList.add('custom-name-color');
+    el.style.setProperty('--account-name-color',chosen);
+  }
+}
+function profileHref(id){return id?'#profile/'+encodeURIComponent(id):'#profile';}
+function makeProfileLink(profile,extraClass='mock-profile-link'){
+  const a=document.createElement('a');
+  a.className=extraClass;
+  a.href=profileHref(profile?.id);
+  a.textContent=profile?.username||'Player';
+  applyNameColor(a,profile?.name_color,profile?.id);
+  return a;
+}
+function profileTargetFromHash(){
+  const hash=location.hash||'';
+  if(!hash.startsWith('#profile/'))return state.session?.user?.id||null;
+  try{return decodeURIComponent(hash.slice(9))||state.session?.user?.id||null;}catch{return state.session?.user?.id||null;}
+}
+async function fetchProfileTarget(target){
+  if(!target)return null;
+  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(target));
+  let q=supabase.from('profiles').select('id,username,name_color,lifetime_score,joined_at');
+  q=isUuid?q.eq('id',target):q.eq('username',target);
+  const {data,error}=await q.maybeSingle();
+  if(error){console.warn('Chordle profile lookup:',error.message);return null;}
+  return data||null;
+}
+function rollSummary(roll){
+  if(!roll||!Array.isArray(roll.notes))return null;
+  const notes=roll.notes.map(Number);
+  const badges=badgeObjectsForNotes(notes);
+  const total=Math.max(0,Math.round(Number(roll.score)||0));
+  const tier=nativeApp()?.scoreTier?.(total);
+  return {
+    notes,badges,score:total,
+    rarity:String(roll.rarity||tier?.id||'common').toLowerCase(),
+    rarityLabel:tier?.label||titleCaseRarity(roll.rarity),
+    chordName:roll.chord_name||'Chord',
+    chordDetail:roll.chord_detail||''
+  };
+}
+function patchRenderedProfileLink(root,profile){
+  const a=root?.querySelector?.('.mock-profile-link');
+  if(!a||!profile)return;
+  a.href=profileHref(profile.id);
+  a.textContent=profile.username||'Player';
+  applyNameColor(a,profile.name_color,profile.id);
+}
 
 function modal(inner){
   const o=document.createElement("div");o.className="ca-overlay";
