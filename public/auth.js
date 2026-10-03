@@ -320,6 +320,79 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   margin:0!important;padding:0!important;
   text-align:center!important;
 }
+/* Prototype layout pass: regular roll cards, #1 daily card, and main score spacing */
+.leaderboard-row-card .mock-roll-card,
+.leaderboard-row-card.mock-roll-card{
+  min-height:170px!important;
+  padding-top:14px!important;
+  padding-bottom:15px!important;
+}
+.leaderboard-row-card .mock-roll-score-block,
+.leaderboard-row-card.mock-roll-card .mock-roll-score-block{
+  min-height:112px!important;
+  padding:10px 8px 12px!important;
+  gap:7px!important;
+  justify-content:center!important;
+}
+.leaderboard-row-card .mock-roll-score-block .score,
+.leaderboard-row-card.mock-roll-card .mock-roll-score-block .score{
+  font-size:clamp(52px,6vw,78px)!important;
+  line-height:.94!important;
+  margin:6px 0 4px!important;
+  padding:0 6px!important;
+  text-align:center!important;
+}
+.leaderboard-row-card .leaderboard-roll-rarity{
+  font-size:13px!important;
+  letter-spacing:.16em!important;
+}
+.leaderboard-row-card .leaderboard-roll-rarity-corner{
+  top:16px!important;
+  right:17px!important;
+}
+.leaderboard-row-card .mock-roll-percentile{
+  margin-top:10px!important;
+  min-height:18px!important;
+  line-height:1.1!important;
+}
+
+/* Today's #1 gets its own roomier treatment instead of inheriting the tight row card proportions. */
+.leaderboard-winner-card .mock-roll-card,
+.leaderboard-winner-card .chordle-tight-leaderboard-card{
+  min-height:212px!important;
+  padding-top:17px!important;
+  padding-bottom:20px!important;
+}
+.leaderboard-winner-card .mock-roll-score-block{
+  min-height:142px!important;
+  padding:10px 8px 15px!important;
+  gap:8px!important;
+  justify-content:center!important;
+}
+.leaderboard-winner-card .mock-roll-score-block .score{
+  font-size:clamp(80px,10vw,122px)!important;
+  line-height:.90!important;
+  margin:5px 0 8px!important;
+  padding:0 8px!important;
+  text-align:center!important;
+}
+.leaderboard-winner-card .leaderboard-winner-meta-row{
+  margin-top:11px!important;
+  gap:21px!important;
+}
+.leaderboard-winner-card .leaderboard-roll-rarity{
+  font-size:13px!important;
+  letter-spacing:.16em!important;
+}
+.leaderboard-winner-card .leaderboard-winner-by{
+  margin-top:11px!important;
+}
+
+/* Keep the existing main-page score size; only move it upward into the unused space. */
+#scoreBox #score{
+  position:relative!important;
+  top:-16px!important;
+}
 .chordle-badge-sort-host{position:relative!important}
 .chordle-badge-sort-control{
   position:absolute;top:10px;right:12px;z-index:8;
