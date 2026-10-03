@@ -1784,7 +1784,7 @@ async function logout(){
   await renderProfile();
 }
 
-async function initializeSignedInUser(user){
+async function initializeSignedInUser(user,{allowLocalReset=false}={}){
   clearProfileLoginHighlight();
 
   // Supabase can emit auth/session refresh events while the browser tab is
@@ -1812,8 +1812,20 @@ async function initializeSignedInUser(user){
     }
   }
 
-  if(state.todayRoll)restoreDailyRoll(state.todayRoll);
-  else if(document.getElementById("nextChord")?.classList.contains("visible"))await persistCompletedRoll();
+  if(state.todayRoll){
+    restoreDailyRoll(state.todayRoll);
+    return;
+  }
+
+  // For signed-in players, Supabase is authoritative. If an admin reset has
+  // removed today's server roll, do not silently recreate it from stale local
+  // reveal state on the next load. Clear that local day so the player can roll
+  // again. Anonymous rolls use PENDING_ANON_ROLL_KEY above and are preserved.
+  const next=document.getElementById("nextChord");
+  if(allowLocalReset&&currentDailyNotes()&&next?.classList.contains("visible")){
+    try{localStorage.removeItem(DAILY_LOCAL_KEY);}catch{}
+    location.reload();
+  }
 }
 
 function replayNavTarget(id){
@@ -1954,7 +1966,7 @@ async function boot(){
 
   const {data}=await supabase.auth.getSession();
   state.session=data.session;
-  if(data.session?.user)await initializeSignedInUser(data.session.user);
+  if(data.session?.user)await initializeSignedInUser(data.session.user,{allowLocalReset:true});
   syncLifetimeDisplay();
   syncAnonymousAccountAttention();
   syncShareButton();
