@@ -98,6 +98,26 @@ style.textContent=`
 .mock-profile-link{
   max-width:100%;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;
 }
+.profile-first-discoveries-panel{
+  width:100%;margin:24px 0 0;padding:18px 20px;
+  border:1px solid rgba(255,255,255,.10);border-radius:11px;
+  background:rgba(255,255,255,.035);
+}
+.profile-first-discoveries-title{
+  margin:0 0 14px;color:#eef0f4;font-size:15px;font-weight:900;
+  letter-spacing:.08em;text-transform:uppercase;
+}
+.profile-first-discoveries-list{display:flex;flex-direction:column;align-items:flex-start;gap:9px}
+.profile-first-discovery-link{
+  appearance:none;border:0;background:transparent;padding:0;
+  font:800 16px/1.25 inherit;text-align:left;cursor:pointer;
+  max-width:100%;white-space:normal;
+}
+.profile-first-discovery-link:hover,
+.profile-first-discovery-link:focus-visible{
+  text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;outline:none;
+}
+.profile-first-discoveries-empty{color:#858a94;font-size:13px;font-weight:700}
 .chordle-roll-history-entry{
   width:100%;margin:24px 0 0;padding:16px 18px;border:1px solid rgba(255,255,255,.13);
   border-radius:11px;background:rgba(255,255,255,.045);color:#f2f3f6;
@@ -238,14 +258,14 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   align-self:stretch!important;
   display:flex!important;
   flex-direction:column!important;
-  align-items:center!important;
+  align-items:flex-end!important;
   justify-content:center!important;
   gap:4px!important;
-  padding:0 4px!important;
+  padding:0 1px 0 4px!important;
   margin:0!important;
-  min-height:0!important;
-  height:auto!important;
-  text-align:center!important;
+  min-height:100%!important;
+  height:100%!important;
+  text-align:right!important;
 }
 .leaderboard-roll-rarity{
   font-size:10px;
@@ -286,6 +306,10 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
   margin:0!important;
   text-align:left!important;
 }
+.leaderboard-winner-card .leaderboard-roll-rarity{
+  font-size:13px!important;
+  letter-spacing:.15em!important;
+}
 .rarity-text-common{color:#d7d9de}
 .rarity-text-uncommon{color:#62d58b}
 .rarity-text-rare{color:#5ea7ff}
@@ -315,17 +339,18 @@ html.chordle-external-replay #badges .badge-first-discovery-tag{display:none!imp
 }
 .leaderboard-row-card .mock-roll-score-block .score,
 .chordle-tight-leaderboard-card .mock-roll-score-block .score{
-  width:100%!important;
+  width:auto!important;
+  max-width:100%!important;
   font-size:clamp(38px,4.5vw,58px);line-height:.92;
-  margin:0!important;padding:0!important;
-  text-align:center!important;
+  margin:0 -2px 0 0!important;padding:0!important;
+  text-align:right!important;
 }
 .chordle-badge-sort-host{position:relative!important}
 .chordle-badge-sort-control{
   position:absolute;top:10px;right:12px;z-index:8;
-  display:flex;align-items:center;gap:7px;
-  padding:6px 8px;border:1px solid rgba(255,255,255,.11);border-radius:8px;
-  background:rgba(17,18,22,.80);backdrop-filter:blur(5px);
+  display:flex;align-items:center;
+  padding:0;border:0;border-radius:0;
+  background:transparent;backdrop-filter:none;
   color:#aeb3bd;font-size:10px;font-weight:800;letter-spacing:.04em;
 }
 .chordle-badge-sort-control select{
@@ -440,7 +465,16 @@ html.chordle-info-route .admin-luck{display:none!important}
 document.head.appendChild(style);
 
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));}
-function localDayKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function localDayKey(d=new Date()){
+  const parts={};
+  for(const part of new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d)){
+    if(part.type!=="literal")parts[part.type]=part.value;
+  }
+  return parts.year+"-"+parts.month+"-"+parts.day;
+}
+function pacificDisplayDate(d=new Date()){
+  return d.toLocaleDateString(undefined,{timeZone:"America/Los_Angeles",weekday:"long",year:"numeric",month:"long",day:"numeric"});
+}
 function noteName(n){return `${NOTE_NAMES_FLAT[((Number(n)%12)+12)%12]}${2+Math.floor(Number(n)/12)}`;}
 function formatScore(v){const n=Number(v||0);return Number.isFinite(n)?Math.round(n).toLocaleString():"0";}
 function username(user=state.session?.user){return state.profile?.username||user?.user_metadata?.username||user?.email?.split("@")[0]||"Player";}
@@ -1473,6 +1507,99 @@ function renderTopBadges(rows){
   nativeApp()?.queueCompactBadgeTitleFit?.(el);
 }
 
+function mountFirstDiscoveriesPanel(){
+  const page=document.getElementById('profilePage');
+  const badgesPanel=page?.querySelector('.profile-badges-panel');
+  if(!page||!badgesPanel)return null;
+  let panel=document.getElementById('profileFirstDiscoveriesPanel');
+  if(!panel){
+    panel=document.createElement('section');
+    panel.id='profileFirstDiscoveriesPanel';
+    panel.className='profile-first-discoveries-panel';
+    panel.innerHTML='<h2 class="profile-first-discoveries-title">First Discoveries</h2><div class="profile-first-discoveries-list"></div>';
+  }
+  badgesPanel.insertAdjacentElement('afterend',panel);
+  return panel;
+}
+
+async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
+  const panel=mountFirstDiscoveriesPanel();
+  if(!panel)return;
+  const list=panel.querySelector('.profile-first-discoveries-list');
+  list.replaceChildren();
+
+  if(!targetProfile){
+    panel.hidden=true;
+    return;
+  }
+  panel.hidden=false;
+
+  const rows=(badgeRows||[]).filter(row=>row?.badge_key);
+  const keys=[...new Set(rows.map(row=>String(row.badge_key)))];
+  if(!keys.length){
+    list.innerHTML='<div class="profile-first-discoveries-empty">No first discoveries yet.</div>';
+    return;
+  }
+
+  const chunks=[];
+  for(let i=0;i<keys.length;i+=40)chunks.push(keys.slice(i,i+40));
+  const results=await Promise.all(chunks.map(chunk=>
+    supabase.from('chordle_user_badges')
+      .select('user_id,badge_key,discovered_at')
+      .in('badge_key',chunk)
+      .order('discovered_at',{ascending:true})
+  ));
+
+  const owners=[];
+  for(const result of results){
+    if(result.error){
+      console.warn('Chordle profile first discoveries:',result.error.message);
+      continue;
+    }
+    owners.push(...(result.data||[]));
+  }
+
+  owners.sort((a,b)=>{
+    const at=Date.parse(a.discovered_at||0)||0;
+    const bt=Date.parse(b.discovered_at||0)||0;
+    return at-bt||String(a.user_id||'').localeCompare(String(b.user_id||''));
+  });
+
+  const firstByKey=new Map();
+  for(const owner of owners){
+    const key=String(owner.badge_key||'');
+    if(key&&!firstByKey.has(key))firstByKey.set(key,owner);
+  }
+
+  const discovered=rows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
+  discovered.sort((a,b)=>{
+    const ar=String(a.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(a.badge_key))?.rarity||'common').toLowerCase();
+    const br=String(b.rarity||nativeApp()?.getCatalogBadgeByKey?.(String(b.badge_key))?.rarity||'common').toLowerCase();
+    const rarityDiff=RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
+    if(rarityDiff!==0)return rarityDiff;
+    const pointDiff=(Number(b.points)||0)-(Number(a.points)||0);
+    if(pointDiff!==0)return pointDiff;
+    return String(a.badge_name||a.badge_key).localeCompare(String(b.badge_name||b.badge_key));
+  });
+
+  if(!discovered.length){
+    list.innerHTML='<div class="profile-first-discoveries-empty">No first discoveries yet.</div>';
+    return;
+  }
+
+  for(const saved of discovered){
+    const key=String(saved.badge_key);
+    const catalog=nativeApp()?.getCatalogBadgeByKey?.(key);
+    const rarity=String(catalog?.rarity||saved.rarity||'common').toLowerCase();
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='profile-first-discovery-link rarity-text-'+rarity;
+    button.textContent=catalog?.name||saved.badge_name||'Badge';
+    button.addEventListener('click',()=>nativeApp()?.openBadgeDetailByKey?.(key));
+    list.appendChild(button);
+  }
+}
+
 function mountRollHistoryEntry(ownProfile){
   const page=document.getElementById('profilePage');
   const badgesPanel=page?.querySelector('.profile-badges-panel');
@@ -1508,9 +1635,9 @@ function mountRollHistoryPage(){
 function formatRollHistoryDate(day){
   const raw=String(day||'');
   const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  const date=match?new Date(Number(match[1]),Number(match[2])-1,Number(match[3])):new Date(raw);
+  const date=match?new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]),20,0,0)):new Date(raw);
   if(Number.isNaN(date.getTime()))return raw||'Unknown date';
-  return date.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  return pacificDisplayDate(date);
 }
 
 async function renderRollHistoryRoute(){
@@ -1710,6 +1837,7 @@ async function renderProfile(){
     void renderProfileLikeControl(null,false);
     renderBestRoll(null,null);
     renderTopBadges([]);
+    await renderFirstDiscoveries(null,[]);
     mountAccountControls();
     return;
   }
@@ -1727,10 +1855,11 @@ async function renderProfile(){
 
   const [{data:best},{data:badges}]=await Promise.all([
     supabase.from('chordle_rolls').select('*').eq('user_id',target.id).order('score',{ascending:false}).limit(1).maybeSingle(),
-    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false}).limit(10)
+    supabase.from('chordle_user_badges').select('*').eq('user_id',target.id).order('points',{ascending:false})
   ]);
   renderBestRoll(best||null,target);
   renderTopBadges(badges||[]);
+  await renderFirstDiscoveries(target,badges||[]);
   mountAccountControls();
 }
 
@@ -1854,6 +1983,7 @@ async function loadReplayFromHash(){
   }
 
   nativeApp()?.stopAllAudio?.();
+  document.documentElement.classList.remove('chordle-roll-history-route','chordle-info-route');
 
   const [profileResult,rollResult]=await Promise.all([
     fetchProfileTarget(target.userKey),
@@ -2053,7 +2183,7 @@ function mountBadgeSortControl(){
     control=document.createElement('label');
     control.id='chordleBadgeSortControl';
     control.className='chordle-badge-sort-control';
-    control.innerHTML='<span>Score</span><select aria-label="Sort badges by score"><option value="desc">Score descending</option><option value="asc">Score ascending</option></select>';
+    control.innerHTML='<select aria-label="Sort badges by score"><option value="desc">Score descending</option><option value="asc">Score ascending</option></select>';
     host.appendChild(control);
     const select=control.querySelector('select');
     select.value=state.badgeSortOrder;
@@ -2175,7 +2305,7 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
   };
 
   if(titleEl)titleEl.textContent="Today's Leaderboard";
-  if(dateEl)dateEl.textContent=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  if(dateEl)dateEl.textContent=pacificDisplayDate();
 
   let todayRolls=state.leaderboardTodayRolls;
   let todayProfiles=state.leaderboardTodayProfiles;
