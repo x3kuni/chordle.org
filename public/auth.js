@@ -852,19 +852,34 @@ function badgeObjectsForNotes(notes){
   try{return [...sim.analyze(notes),...sim.wholeChordBadges(notes)];}catch{return [];}
 }
 
+function canonicalRollAnalysis(notes){
+  if(!Array.isArray(notes)||notes.length!==6)return null;
+  const badges=badgeObjectsForNotes(notes);
+  if(!badges.length)return null;
+  const rawScore=badges.reduce((sum,badge)=>sum+Math.max(0,Number(badge?.points)||0),0);
+  const score=Math.round(rawScore);
+  if(!Number.isFinite(score)||score<=0)return null;
+  const tier=nativeApp()?.scoreTier?.(score);
+  return {
+    badges,
+    score,
+    rarity:String(tier?.id||'common').toLowerCase()
+  };
+}
+
 function captureAnonymousRoll(){
   if(state.session?.user)return null;
   const notes=currentDailyNotes();
-  const total=numericText(document.getElementById('score'));
+  const analysis=canonicalRollAnalysis(notes);
   const next=document.getElementById('nextChord');
-  if(!notes||total<=0||!next?.classList.contains('visible'))return null;
+  if(!notes||!analysis||!next?.classList.contains('visible'))return null;
   const pending={
     roll_day:localDayKey(),
     notes,
-    score:Math.round(total),
+    score:analysis.score,
     chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
     chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
-    rarity:currentRarityId()
+    rarity:analysis.rarity
   };
   writeJson(PENDING_ANON_ROLL_KEY,pending);
   return pending;
@@ -880,6 +895,8 @@ async function persistPendingAnonymousRoll(){
   }
   const notes=Array.isArray(pending.notes)?pending.notes.map(Number):[];
   if(notes.length!==6||!notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36))return null;
+  const analysis=canonicalRollAnalysis(notes);
+  if(!analysis)return null;
 
   let roll=await getTodayRoll();
   if(!roll){
@@ -887,12 +904,11 @@ async function persistPendingAnonymousRoll(){
       user_id:state.session.user.id,
       roll_day:pending.roll_day,
       notes,
-      score:Math.max(0,Math.round(Number(pending.score)||0)),
+      score:analysis.score,
       chord_name:pending.chord_name||null,
       chord_detail:pending.chord_detail||null,
-      rarity:String(pending.rarity||'common').toLowerCase()
+      rarity:analysis.rarity
     };
-    if(payload.score<=0)return null;
     const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
     if(error){
       roll=await getTodayRoll();
@@ -900,7 +916,7 @@ async function persistPendingAnonymousRoll(){
     }else roll=data;
   }
 
-  const badges=badgeObjectsForNotes(notes);
+  const badges=analysis.badges;
   if(roll&&badges.length){
     const existing=await getRollBadges(roll.id);
     const existingKeys=new Set(existing.map(b=>String(b.badge_key)));
@@ -931,21 +947,21 @@ async function persistCompletedRoll(){
   if(!next?.classList.contains('visible'))return;
   const notes=currentDailyNotes();
   if(!notes)return;
+  const analysis=canonicalRollAnalysis(notes);
+  if(!analysis)return;
 
   state.persisting=true;
   try{
     let roll=await getTodayRoll();
     if(!roll){
-      const total=numericText(document.getElementById('score'));
-      if(total<=0)return;
       const payload={
         user_id:state.session.user.id,
         roll_day:localDayKey(),
         notes,
-        score:Math.round(total),
+        score:analysis.score,
         chord_name:String(document.getElementById('chordName')?.textContent||'').trim()||null,
         chord_detail:String(document.getElementById('chordDetail')?.textContent||'').trim()||null,
-        rarity:currentRarityId()
+        rarity:analysis.rarity
       };
       const {data,error}=await supabase.from('chordle_rolls').insert(payload).select('*').single();
       if(error){
@@ -954,7 +970,7 @@ async function persistCompletedRoll(){
       }else roll=data;
     }
 
-    const badges=badgeObjectsForNotes(notes);
+    const badges=analysis.badges;
     if(roll&&badges.length){
       const existing=await getRollBadges(roll.id);
       const existingKeys=new Set(existing.map(b=>String(b.badge_key)));
@@ -1224,13 +1240,14 @@ function captureOwnMainSummary(){
   const pending=readJson(PENDING_ANON_ROLL_KEY);
   if(pending?.roll_day===localDayKey()&&Array.isArray(pending.notes)&&pending.notes.length===6){
     const notes=pending.notes.map(Number);
-    if(notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36)){
+    const analysis=canonicalRollAnalysis(notes);
+    if(analysis){
       return {
         notes,
-        badges:badgeObjectsForNotes(notes),
-        score:Math.max(0,Math.round(Number(pending.score)||0)),
-        rarity:String(pending.rarity||'common').toLowerCase(),
-        rarityLabel:titleCaseRarity(pending.rarity||'common'),
+        badges:analysis.badges,
+        score:analysis.score,
+        rarity:analysis.rarity,
+        rarityLabel:titleCaseRarity(analysis.rarity),
         chordName:pending.chord_name||'Chord',
         chordDetail:pending.chord_detail||''
       };
@@ -1239,14 +1256,14 @@ function captureOwnMainSummary(){
 
   const notes=currentDailyNotes();
   const next=document.getElementById('nextChord');
-  const score=Math.max(0,Math.round(numericText(document.getElementById('score'))));
-  if(notes&&score>0&&next?.classList.contains('visible')){
+  const analysis=canonicalRollAnalysis(notes);
+  if(notes&&analysis&&next?.classList.contains('visible')){
     return {
       notes,
-      badges:badgeObjectsForNotes(notes),
-      score,
-      rarity:currentRarityId(),
-      rarityLabel:String(document.getElementById('scoreRarity')?.textContent||titleCaseRarity(currentRarityId())).trim(),
+      badges:analysis.badges,
+      score:analysis.score,
+      rarity:analysis.rarity,
+      rarityLabel:String(document.getElementById('scoreRarity')?.textContent||titleCaseRarity(analysis.rarity)).trim(),
       chordName:String(document.getElementById('chordName')?.textContent||'Chord').trim()||'Chord',
       chordDetail:String(document.getElementById('chordDetail')?.textContent||'').trim()
     };
@@ -1769,6 +1786,15 @@ async function logout(){
 
 async function initializeSignedInUser(user){
   clearProfileLoginHighlight();
+
+  // Supabase can emit auth/session refresh events while the browser tab is
+  // backgrounded. A replay must remain an isolated spectator state: never
+  // hydrate the signed-in user's profile/lifetime/badges/chord into its DOM.
+  if(isReplayHash()||state.externalReplay){
+    state.todayRoll=await getTodayRoll(user.id);
+    return;
+  }
+
   await loadProfile(user,2);
   await syncOwnedBadgesToLocal();
   state.todayRoll=await getTodayRoll(user.id);
