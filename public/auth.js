@@ -2562,27 +2562,65 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
   requestAnimationFrame(()=>document.querySelectorAll('#leaderboardPage .mock-profile-link').forEach(fitProfileName));
 }
 
+const BADGE_EXIST_PAGE_SIZE=1000;
+const BADGE_EXIST_CACHE_MS=15000;
+const badgeExistCache={fetchedAt:0,counts:null,inFlight:null};
+
+async function fetchGlobalBadgeExistCounts({force=false}={}){
+  const now=Date.now();
+  if(!force&&badgeExistCache.counts&&now-badgeExistCache.fetchedAt<BADGE_EXIST_CACHE_MS){
+    return {counts:badgeExistCache.counts,error:null};
+  }
+  if(badgeExistCache.inFlight)return badgeExistCache.inFlight;
+
+  const task=(async()=>{
+    const counts=new Map();
+    for(let from=0;;from+=BADGE_EXIST_PAGE_SIZE){
+      const {data,error}=await supabase.from("chordle_roll_badges")
+        .select("badge_key")
+        .order("roll_id",{ascending:true})
+        .order("badge_key",{ascending:true})
+        .range(from,from+BADGE_EXIST_PAGE_SIZE-1);
+      if(error)return {counts:null,error};
+      const rows=data||[];
+      for(const row of rows){
+        const key=String(row.badge_key);
+        counts.set(key,(counts.get(key)||0)+1);
+      }
+      if(rows.length<BADGE_EXIST_PAGE_SIZE)break;
+    }
+    badgeExistCache.counts=counts;
+    badgeExistCache.fetchedAt=Date.now();
+    return {counts,error:null};
+  })();
+
+  badgeExistCache.inFlight=task;
+  try{
+    return await task;
+  }finally{
+    if(badgeExistCache.inFlight===task)badgeExistCache.inFlight=null;
+  }
+}
+
 async function refreshBadgeExistCounts(){
   mountBadgeSortControl();
   sortBadgeIndexEntries(state.badgeSortOrder);
 
   const uid=state.session?.user?.id||null;
-  const instanceQuery=supabase.from("chordle_roll_badges").select("badge_key");
   const ownedQuery=uid
     ?supabase.from("chordle_user_badges").select("badge_key").eq("user_id",uid)
     :Promise.resolve({data:[],error:null});
-  const [instanceResult,ownedResult]=await Promise.all([instanceQuery,ownedQuery]);
+  const [instanceResult,ownedResult]=await Promise.all([
+    fetchGlobalBadgeExistCounts(),
+    ownedQuery
+  ]);
   if(instanceResult.error){
     console.warn('Chordle badge existence:',instanceResult.error.message);
     return;
   }
   if(ownedResult.error)console.warn('Chordle owned badge tint:',ownedResult.error.message);
 
-  const counts=new Map();
-  for(const b of (instanceResult.data||[])){
-    const key=String(b.badge_key);
-    counts.set(key,(counts.get(key)||0)+1);
-  }
+  const counts=instanceResult.counts||new Map();
   const ownedKeys=new Set((ownedResult.data||[]).map(row=>String(row.badge_key)));
 
   document.querySelectorAll(".badge-index-row[data-badge-key]").forEach(row=>{
