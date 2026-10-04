@@ -3393,7 +3393,7 @@ function wireNavigation(){
         try{
           await loadReplayFromHash();
         }finally{
-          if(!state.externalReplay)endReplayTintSuppression();
+          endReplayTintSuppression();
         }
         return;
       }
@@ -3515,7 +3515,7 @@ async function boot(){
     try{
       await loadReplayFromHash();
     }finally{
-      if(!state.externalReplay)endReplayTintSuppression();
+      endReplayTintSuppression();
     }
   }
   else if(await renderRollHistoryRoute()){}
