@@ -326,7 +326,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=global-pacific-reset-20261003-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=badge-existence-pagination-20261003-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
