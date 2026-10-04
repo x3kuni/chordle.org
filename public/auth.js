@@ -18,9 +18,17 @@ const ANON_ROLL_BROWSER_KEY = "chordle_anonymous_roll_browser_v1";
 const SIGNUP_COOLDOWN_KEY = "chordle_signup_cooldown_v1";
 const SIGNUP_COOLDOWN_MS = 60000;
 const CHORDLE_DISCORD_URL = "https://discord.gg/vsWx9n2S4";
+const ANONYMOUS_MAX_SCORE = 5000000;
+const ANONYMOUS_ROLL_SEARCH_LIMIT = 5000;
+
+const anonymousDiscoveryPolicy = {
+  ready: false,
+  badgeKeys: new Set()
+};
 
 const state = {
   session: null,
+  authResolved: false,
   profile: null,
   todayRoll: null,
   restoring: false,
@@ -611,6 +619,17 @@ html.chordle-info-route .admin-luck{display:none!important}
   animation:chordleCreateAccountPulse 1.35s ease-in-out infinite;
 }
 #shareChordBtn{min-width:72px}
+.badge.chordle-anon-undiscovered{
+  background:#292b30!important;
+  border-color:rgba(255,255,255,.13)!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+.badge.chordle-anon-undiscovered::before,
+.badge.chordle-anon-undiscovered::after{display:none!important}
+.badge.chordle-anon-undiscovered .badge-name,
+.badge.chordle-anon-undiscovered .rarity{color:#aeb3bd!important;text-shadow:none!important}
+.badge.chordle-anon-undiscovered .points{color:#eef0f4!important;text-shadow:none!important}
 .chordle-copy-toast{
   position:fixed;
   z-index:2147483642;
@@ -859,6 +878,10 @@ function currentShareText(){
   if(percentile)lines.push(`**${percentile}**`);
   lines.push(`**${score.toLocaleString()}** Score`,'');
   badges.forEach(badge=>{
+    if(shouldHideAnonymousBadge(badge)){
+      lines.push(`**❔ ???** (+${Math.max(0,Math.round(Number(badge.points)||0)).toLocaleString()})`);
+      return;
+    }
     const prefix=rarityAtLeast(badge.rarity,'legendary')?'## ':'';
     lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
   });
@@ -1505,6 +1528,65 @@ function canonicalRollAnalysis(notes){
   };
 }
 
+function shouldHideAnonymousBadge(badge){
+  if(state.session?.user||state.externalReplay||badge?.special)return false;
+  if(!badge)return false;
+  const key=String(badge.key||badge.name||'');
+  if(!key)return false;
+  if(!state.authResolved||!anonymousDiscoveryPolicy.ready)return true;
+  return !anonymousDiscoveryPolicy.badgeKeys.has(key);
+}
+
+window.__CHORDLE_ANON_POLICY__={
+  shouldHideBadge:shouldHideAnonymousBadge
+};
+
+async function refreshAnonymousDiscoveryPolicy(){
+  const {data,error}=await fetchAllUserBadgeRows();
+  if(error){
+    console.warn('Chordle anonymous discovery policy:',error.message);
+    anonymousDiscoveryPolicy.ready=false;
+    return false;
+  }
+  anonymousDiscoveryPolicy.badgeKeys=new Set((data||[]).map(row=>String(row.badge_key||'')).filter(Boolean));
+  anonymousDiscoveryPolicy.ready=true;
+  return true;
+}
+
+function prepareAnonymousDailyRoll(){
+  if(!state.authResolved||state.session?.user||state.externalReplay||state.todayRoll)return null;
+  const current=currentDailyNotes();
+  const currentAnalysis=canonicalRollAnalysis(current);
+  if(current&&currentAnalysis&&currentAnalysis.score<=ANONYMOUS_MAX_SCORE)return current;
+
+  if(currentAnalysis?.score>ANONYMOUS_MAX_SCORE)clearAnonymousRollClaim();
+
+  const sim=window.__CHORDLE_SIM__;
+  if(!sim?.randomRoll)return current;
+
+  let best=null;
+  let bestScore=Infinity;
+  for(let attempt=0;attempt<ANONYMOUS_ROLL_SEARCH_LIMIT;attempt++){
+    const notes=sim.randomRoll();
+    const analysis=canonicalRollAnalysis(notes);
+    if(!analysis)continue;
+    if(analysis.score<bestScore){
+      bestScore=analysis.score;
+      best=notes;
+    }
+    if(analysis.score<=ANONYMOUS_MAX_SCORE){
+      writeJson(DAILY_LOCAL_KEY,{day:localDayKey(),notes});
+      return notes;
+    }
+  }
+
+  if(best){
+    writeJson(DAILY_LOCAL_KEY,{day:localDayKey(),notes:best});
+    return best;
+  }
+  return current;
+}
+
 function markAnonymousRollStarted(){
   if(state.session?.user||state.externalReplay)return;
   writeJson(ANON_ROLL_BROWSER_KEY,{roll_day:localDayKey(),started_at:Date.now()});
@@ -1528,6 +1610,10 @@ function captureAnonymousRoll({requireComplete=true}={}){
   const next=document.getElementById('nextChord');
   const complete=!!next?.classList.contains('visible');
   if(!notes||!analysis||(requireComplete&&!complete))return null;
+  if(analysis.score>ANONYMOUS_MAX_SCORE){
+    clearAnonymousRollClaim();
+    return null;
+  }
 
   const pending={
     roll_day:localDayKey(),
@@ -1564,6 +1650,10 @@ async function persistPendingAnonymousRoll(){
   if(notes.length!==6||!notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36))return null;
   const analysis=canonicalRollAnalysis(notes);
   if(!analysis)return null;
+  if(analysis.score>ANONYMOUS_MAX_SCORE){
+    clearAnonymousRollClaim();
+    return await getTodayRoll();
+  }
 
   let roll=await getTodayRoll();
   if(roll){
@@ -3130,7 +3220,10 @@ function showAnonymousSavePrompt(){
   if(state.anonymousPromptedDay===pending.roll_day)return;
   state.anonymousPromptedDay=pending.roll_day;
 
-  const inner='<h2>Log on to save your chord</h2><p class="ca-sub">Sign in or create an account to keep this roll, its score, and its discovered badges.</p><div class="ca-save-choice"><button class="ca-btn" data-ca-save="signin">Sign in</button><button class="ca-btn ca-primary" data-ca-save="signup">Create account</button></div>';
+  const hasHiddenDiscovery=(pending.badges||[]).some(badge=>shouldHideAnonymousBadge(badge));
+  const inner=hasHiddenDiscovery
+    ?'<h2>You found something undiscovered</h2><p class="ca-sub">Sign in or create an account to reveal this hidden badge and save the roll to your account.</p><div class="ca-save-choice"><button class="ca-btn" data-ca-save="signin">Sign in</button><button class="ca-btn ca-primary" data-ca-save="signup">Create account</button></div>'
+    :'<h2>Log on to save your chord</h2><p class="ca-sub">Sign in or create an account to keep this roll, its score, and its discovered badges.</p><div class="ca-save-choice"><button class="ca-btn" data-ca-save="signin">Sign in</button><button class="ca-btn ca-primary" data-ca-save="signup">Create account</button></div>';
   const o=modal(inner,highlightProfileLogin);
   o.classList.add('ca-save-overlay');
   o.querySelector('[data-ca-save="signin"]').onclick=()=>showLogin(o);
@@ -3303,7 +3396,13 @@ function wireRollCompletion(){
   }
 
   document.getElementById('revealBtn')?.addEventListener('click',event=>{
+    if(!state.authResolved){
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if(!state.session?.user&&!state.todayRoll&&!state.externalReplay){
+      prepareAnonymousDailyRoll();
       markAnonymousRollStarted();
       setTimeout(()=>captureAnonymousRoll({requireComplete:false}),0);
     }
@@ -3340,12 +3439,19 @@ async function boot(){
     }
   });
 
+  const revealButtonForAuth=document.getElementById('revealBtn');
+  const revealWasAvailable=!!revealButtonForAuth&&!revealButtonForAuth.disabled;
+  if(revealWasAvailable)revealButtonForAuth.disabled=true;
+
   const {data}=await supabase.auth.getSession();
   // Capture a browser-owned anonymous roll before adopting a restored session.
   // This covers email-confirmation redirects and reloads after account creation.
   if(data.session?.user)captureAnonymousRoll({requireComplete:false});
   state.session=data.session;
   if(data.session?.user)await initializeSignedInUser(data.session.user,{allowLocalReset:true});
+  state.authResolved=true;
+  if(revealWasAvailable&&revealButtonForAuth&&!state.todayRoll&&!state.externalReplay)revealButtonForAuth.disabled=false;
+  void refreshAnonymousDiscoveryPolicy();
   syncLifetimeDisplay();
   syncAnonymousAccountAttention();
   syncShareButton();
