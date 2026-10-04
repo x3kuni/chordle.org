@@ -141,7 +141,7 @@ style.textContent=`
   max-width:100%;white-space:normal;
 }
 .profile-first-discovery-separator{
-  color:#737983;font-size:14px;font-weight:900;line-height:1;
+  color:#737983;font-size:16px;font-weight:900;line-height:1;
 }
 .profile-first-discovery-link:hover,
 .profile-first-discovery-link:focus-visible{
@@ -401,22 +401,43 @@ html.chordle-external-replay #nextChord{display:none!important}
   font:800 10px/1.1 inherit;cursor:pointer;outline:none;
 }
 .badge-index-entry.chordle-publicly-discovered{
-  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
+  background:transparent!important;
 }
 .badge-index-entry.chordle-publicly-discovered .badge-index-row{
-  background:inherit!important;
+  position:relative!important;
+  overflow:hidden!important;
+  isolation:isolate;
+  cursor:pointer!important;
+  transition:filter .15s ease,box-shadow .15s ease,border-color .15s ease!important;
+  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
 }
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="uncommon"]{background:linear-gradient(135deg,rgba(98,213,139,.16),rgba(25,28,30,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="rare"]{background:linear-gradient(135deg,rgba(94,167,255,.17),rgba(25,28,32,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="epic"]{background:linear-gradient(135deg,rgba(170,121,255,.18),rgba(27,25,32,.86) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="legendary"]{background:linear-gradient(135deg,rgba(255,216,77,.17),rgba(31,29,23,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="mythic"]{background:linear-gradient(135deg,rgba(255,77,99,.17),rgba(31,24,26,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="ultra"]{background:linear-gradient(135deg,rgba(255,114,198,.17),rgba(31,24,30,.88) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="godly"]{background:linear-gradient(135deg,rgba(235,237,241,.15),rgba(25,26,29,.90) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="supreme"]{background:linear-gradient(135deg,rgba(255,84,84,.11),rgba(94,167,255,.09) 38%,rgba(170,121,255,.11) 68%,rgba(25,26,30,.88))!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="omnipotent"]{background:linear-gradient(135deg,rgba(150,154,162,.13),rgba(5,5,7,.92) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="eternal"]{background:linear-gradient(135deg,rgba(217,121,50,.18),rgba(27,25,23,.90) 72%)!important}
-.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="absolute"]{background:linear-gradient(135deg,rgba(154,101,219,.19),rgba(17,10,25,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="uncommon"] .badge-index-row{background:linear-gradient(135deg,rgba(98,213,139,.16),rgba(25,28,30,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="rare"] .badge-index-row{background:linear-gradient(135deg,rgba(94,167,255,.17),rgba(25,28,32,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="epic"] .badge-index-row{background:linear-gradient(135deg,rgba(170,121,255,.18),rgba(27,25,32,.86) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="legendary"] .badge-index-row{background:linear-gradient(135deg,rgba(255,216,77,.17),rgba(31,29,23,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="mythic"] .badge-index-row{background:linear-gradient(135deg,rgba(255,77,99,.17),rgba(31,24,26,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="ultra"] .badge-index-row{background:linear-gradient(135deg,rgba(255,114,198,.17),rgba(31,24,30,.88) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="godly"] .badge-index-row{background:linear-gradient(135deg,rgba(235,237,241,.15),rgba(25,26,29,.90) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="supreme"] .badge-index-row{background:linear-gradient(135deg,rgba(255,84,84,.11),rgba(94,167,255,.09) 38%,rgba(170,121,255,.11) 68%,rgba(25,26,30,.88))!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="omnipotent"] .badge-index-row{background:linear-gradient(135deg,rgba(150,154,162,.13),rgba(5,5,7,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="eternal"] .badge-index-row{background:linear-gradient(135deg,rgba(217,121,50,.18),rgba(27,25,23,.90) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered[data-chordle-rarity="absolute"] .badge-index-row{background:linear-gradient(135deg,rgba(154,101,219,.19),rgba(17,10,25,.92) 72%)!important}
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-within{
+  filter:brightness(1.10);
+  border-color:rgba(255,255,255,.18)!important;
+  box-shadow:inset 0 0 18px rgba(255,255,255,.025)!important;
+}
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover .badge-index-row-name,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover .badge-name,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:hover > :first-child,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-within .badge-index-row-name,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-within .badge-name,
+.badge-index-entry.chordle-publicly-discovered .badge-index-row:focus-within > :first-child{
+  color:#d9dde5!important;
+  opacity:1!important;
+  text-shadow:0 0 8px rgba(255,255,255,.28);
+}
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
 }
@@ -628,7 +649,16 @@ function currentShareText(){
   if(state.externalReplay)return '';
   const next=document.getElementById('nextChord');
   const notes=currentDailyNotes();
-  const score=Math.max(0,Math.round(numericText(document.getElementById('score'))));
+
+  const day=localDayKey();
+  const pending=readJson(PENDING_ANON_ROLL_KEY);
+  const canonical=notes?canonicalRollAnalysis(notes):null;
+  const savedScore=state.todayRoll?.roll_day===day?Number(state.todayRoll.score):0;
+  const pendingScore=pending?.roll_day===day?Number(pending.score):0;
+  const canonicalScore=Number(canonical?.score)||0;
+  const renderedScore=numericText(document.getElementById('score'));
+  const score=Math.max(0,Math.round(savedScore||pendingScore||canonicalScore||renderedScore));
+
   if(!next?.classList.contains('visible')||!notes||score<=0)return '';
 
   const chordName=String(document.getElementById('chordName')?.textContent||'Chord').trim()||'Chord';
@@ -1565,6 +1595,21 @@ function mountFirstDiscoveriesPanel(){
   return panel;
 }
 
+function firstDiscoveryMeta(saved){
+  const key=String(saved?.badge_key||'');
+  const catalog=key?nativeApp()?.getCatalogBadgeByKey?.(key):null;
+  const points=Math.max(0,Number(catalog?.points??saved?.points)||0);
+  const rarity=String(
+    window.__CHORDLE_SIM__?.badgeRarityFromPoints?.(points)
+    ||catalog?.rarity
+    ||saved?.rarity
+    ||'common'
+  ).toLowerCase();
+  const rank=Math.max(0,RARITY_ORDER.indexOf(rarity));
+  const title=String(catalog?.name||saved?.badge_name||key||'Badge');
+  return {key,catalog,points,rarity,rank,title};
+}
+
 async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
   const panel=mountFirstDiscoveriesPanel();
   if(!panel)return;
@@ -1615,17 +1660,23 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
   }
 
   const uniqueOwnedRows=[...new Map(rows.map(row=>[String(row.badge_key),row])).values()];
-  const discovered=uniqueOwnedRows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
+  const confirmed=uniqueOwnedRows.filter(row=>firstByKey.get(String(row.badge_key))?.user_id===targetProfile.id);
+
+  const byTitle=new Map();
+  for(const row of confirmed){
+    const meta=firstDiscoveryMeta(row);
+    const titleKey=meta.title.trim().toLocaleLowerCase();
+    const prior=byTitle.get(titleKey);
+    if(!prior||firstDiscoveryMeta(prior).points<meta.points)byTitle.set(titleKey,row);
+  }
+
+  const discovered=[...byTitle.values()];
   discovered.sort((a,b)=>{
-    const ac=nativeApp()?.getCatalogBadgeByKey?.(String(a.badge_key));
-    const bc=nativeApp()?.getCatalogBadgeByKey?.(String(b.badge_key));
-    const ar=String(ac?.rarity||a.rarity||'common').toLowerCase();
-    const br=String(bc?.rarity||b.rarity||'common').toLowerCase();
-    const rarityDiff=RARITY_ORDER.indexOf(br)-RARITY_ORDER.indexOf(ar);
-    if(rarityDiff!==0)return rarityDiff;
-    const scoreDiff=(Number(bc?.points??b.points)||0)-(Number(ac?.points??a.points)||0);
-    if(scoreDiff!==0)return scoreDiff;
-    return String(ac?.name||a.badge_name||a.badge_key).localeCompare(String(bc?.name||b.badge_name||b.badge_key));
+    const am=firstDiscoveryMeta(a);
+    const bm=firstDiscoveryMeta(b);
+    return bm.rank-am.rank
+      ||bm.points-am.points
+      ||am.title.localeCompare(bm.title);
   });
 
   if(!discovered.length){
@@ -1634,9 +1685,10 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
   }
 
   discovered.forEach((saved,index)=>{
-    const key=String(saved.badge_key);
-    const catalog=nativeApp()?.getCatalogBadgeByKey?.(key);
-    const rarity=String(catalog?.rarity||saved.rarity||'common').toLowerCase();
+    const meta=firstDiscoveryMeta(saved);
+    const key=meta.key;
+    const catalog=meta.catalog;
+    const rarity=meta.rarity;
 
     const item=document.createElement('span');
     item.className='profile-first-discovery-item';
@@ -1644,14 +1696,14 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
     const button=document.createElement('button');
     button.type='button';
     button.className='profile-first-discovery-link rarity-text-'+rarity;
-    button.textContent=catalog?.name||saved.badge_name||'Badge';
+    button.textContent=meta.title;
     button.addEventListener('click',()=>nativeApp()?.openBadgeDetailByKey?.(key));
     item.appendChild(button);
 
     if(index<discovered.length-1){
       const separator=document.createElement('span');
       separator.className='profile-first-discovery-separator';
-      separator.textContent='*';
+      separator.textContent='⋅';
       separator.setAttribute('aria-hidden','true');
       item.appendChild(separator);
     }
