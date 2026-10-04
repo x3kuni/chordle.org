@@ -217,7 +217,6 @@ export default {
 
       currentBadges=[...badges];
       displayedScore=total;
-      displayedScore=total;
       persistCurrentRevealProgress=false;
 
       resetFinalPresentation();
