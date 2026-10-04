@@ -3261,8 +3261,10 @@ function wireRollCompletion(){
   const next=document.getElementById("nextChord");
   if(next){
     const observer=new MutationObserver(()=>{
+      const visible=next.classList.contains("visible");
+      if(visible&&!state.externalReplay)syncGlobalResetCountdown();
       syncShareButton();
-      if(!next.classList.contains("visible")||state.restoring||state.externalReplay)return;
+      if(!visible||state.restoring||state.externalReplay)return;
       if(state.session?.user)setTimeout(persistCompletedRoll,0);
       else{
         markAnonymousRollStarted();
