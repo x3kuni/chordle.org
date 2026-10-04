@@ -1,0 +1,43 @@
+name: Debug Highest Black Row Exists
+
+on:
+  push:
+    branches:
+      - debug/highest-black-row-exists
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Inspect live badge row
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://chordle.org/#badges"
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "$URL" > /tmp/badges.html 2>/tmp/chrome.log || {
+            cat /tmp/chrome.log
+            exit 1
+          }
+          python - <<'PY'
+          from pathlib import Path
+          from html import unescape
+          import re
+          s=Path('/tmp/badges.html').read_text(encoding='utf-8',errors='ignore')
+          key='highest_black_row'
+          idx=s.find(f'data-badge-key="{key}"')
+          print('ROW INDEX',idx)
+          if idx<0:
+              print('ROW NOT FOUND')
+              raise SystemExit(2)
+          chunk=s[max(0,idx-2000):idx+5000]
+          print(chunk)
+          exists=re.search(r'badge-index-exists[^>]*>([^<]+)<',chunk)
+          print('EXISTS TEXT:', unescape(exists.group(1)).strip() if exists else 'NOT FOUND')
+          print('PUBLICLY DISCOVERED CLASS:', 'chordle-publicly-discovered' in chunk)
+          PY
