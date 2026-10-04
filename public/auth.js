@@ -2662,10 +2662,13 @@ function syncMainRaritySurfaces(){
 
   const rarityText=normalizeSurfaceRarity(document.getElementById('scoreRarity')?.textContent);
   let rarity=rarityText;
+  if(!rarity&&state.externalReplay?.summary?.rarity){
+    rarity=normalizeSurfaceRarity(state.externalReplay.summary.rarity);
+  }
   if(!rarity){
     const next=document.getElementById('nextChord');
     const notes=currentDailyNotes();
-    if((next?.classList.contains('visible')||state.todayRoll||state.externalReplay)&&notes){
+    if((next?.classList.contains('visible')||state.todayRoll)&&notes){
       rarity=normalizeSurfaceRarity(canonicalRollAnalysis(notes)?.rarity);
     }
   }
@@ -3386,7 +3389,12 @@ function wireNavigation(){
 
     setTimeout(async()=>{
       if(isReplayHash()){
-        await loadReplayFromHash();
+        beginReplayTintSuppression();
+        try{
+          await loadReplayFromHash();
+        }finally{
+          if(!state.externalReplay)endReplayTintSuppression();
+        }
         return;
       }
 
@@ -3502,7 +3510,14 @@ async function boot(){
     }
   }
 
-  if(isReplayHash())await loadReplayFromHash();
+  if(isReplayHash()){
+    beginReplayTintSuppression();
+    try{
+      await loadReplayFromHash();
+    }finally{
+      if(!state.externalReplay)endReplayTintSuppression();
+    }
+  }
   else if(await renderRollHistoryRoute()){}
   else if(renderInfoRoute()){}
   else if(location.hash.startsWith('#profile'))await renderProfile();
