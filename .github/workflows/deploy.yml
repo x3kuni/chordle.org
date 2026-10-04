@@ -1,13 +1,13 @@
-name: Deploy Chordle Leaderboard Count Prototype
+name: Deploy Chordle
 
 on:
   push:
     branches:
-      - prototype/fix-leaderboard-badge-counts-20261004
+      - main
   workflow_dispatch:
 
 concurrency:
-  group: chordle-leaderboard-count-prototype
+  group: chordle-production
   cancel-in-progress: true
 
 permissions:
@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out leaderboard prototype
+      - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Deploy isolated leaderboard prototype
+      - name: Deploy Chordle to Cloudflare
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --name leaderboard-badge-counts-chordle
+          command: deploy
