@@ -1,0 +1,107 @@
+name: Validate Global Pacific Reset
+
+on:
+  push:
+    branches:
+      - fix/global-pacific-reset-20261003
+  workflow_dispatch:
+
+concurrency:
+  group: chordle-global-pacific-reset
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate generated browser scripts
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {spawnSync} from 'node:child_process';
+          import worker from './worker.js';
+
+          const source=fs.readFileSync('./public/index.html','utf8');
+          const env={ASSETS:{async fetch(){return new Response(source,{headers:{'content-type':'text/html; charset=UTF-8'}});}}};
+          const response=await worker.fetch(new Request('https://prototype.local/'),env);
+          const html=await response.text();
+
+          const required=[
+            "CHORDLE_PACIFIC_DAY_FORMATTER",
+            "const day=chordlePacificDayKey();",
+            "function localDayKey(d=new Date()){ return chordlePacificDayKey(d); }",
+            "const next=chordleNextPacificMidnight(now);",
+            "global-pacific-reset-20261003-1"
+          ];
+          for(const marker of required){
+            if(!html.includes(marker))throw new Error('Missing generated Pacific reset marker: '+marker);
+          }
+
+          const scripts=[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
+          for(let i=0;i<scripts.length;i++){
+            const file='/tmp/chordle-inline-'+i+'.js';
+            fs.writeFileSync(file,scripts[i]);
+            const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
+            if(result.status!==0){
+              console.error(result.stderr||result.stdout);
+              process.exit(result.status||1);
+            }
+          }
+
+          const auth=fs.readFileSync('./public/auth.js','utf8');
+          if(!auth.includes('function syncGlobalResetCountdown()'))throw new Error('Global reset watchdog missing');
+          const authCheck=spawnSync(process.execPath,['--check','./public/auth.js'],{encoding:'utf8'});
+          if(authCheck.status!==0){
+            console.error(authCheck.stderr||authCheck.stdout);
+            process.exit(authCheck.status||1);
+          }
+
+          const cache=response.headers.get('cache-control')||'';
+          if(!cache.includes('no-store'))throw new Error('HTML no-store header missing');
+          console.log('Pacific reset generation checks passed.');
+          NODE
+
+      - name: Deploy Chordle reset preview
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: preview --name global-pacific-reset
+
+      - name: Smoke test live preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://global-pacific-reset-chordle.gtownsend707.workers.dev"
+          sleep 3
+
+          curl -fsSL -D /tmp/headers.txt "$URL" -o /tmp/chordle-live.html
+          grep -qi 'cache-control:.*no-store' /tmp/headers.txt
+          grep -q 'global-pacific-reset-20261003-1' /tmp/chordle-live.html
+
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "Chrome unavailable; static validation passed."
+            exit 0
+          fi
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom "$URL" > /tmp/home.html 2>/tmp/home.log
+          KEY_COUNT="$(grep -o 'data-note="' /tmp/home.html | wc -l | tr -d ' ')"
+          echo "Rendered piano key count: $KEY_COUNT"
+          test "$KEY_COUNT" -ge 30
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom "$URL/#leaderboard" > /tmp/leaderboard.html 2>/tmp/leaderboard.log
+          grep -q 'leaderboard-route' /tmp/leaderboard.html
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom "$URL/#profile" > /tmp/profile.html 2>/tmp/profile.log
+          grep -q 'profile-route' /tmp/profile.html
+
+          echo "Home, leaderboard, and profile smoke tests passed."
