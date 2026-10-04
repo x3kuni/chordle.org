@@ -281,12 +281,21 @@ export default {
       revealBtn.disabled=false;
       revealBtn.textContent='Replay chord';
       rerollBtn.disabled=true;
+      // reveal() temporarily locks the chord audio control while notes are
+      // generating. A completed daily-roll replay must hand that control back
+      // so the player can immediately play/stop the finished chord hum.
+      audioBtn.disabled=false;
+      updateAudioButton();
       return true;
     }catch(error){
       console.warn('Chordle replay failed:',error);
       revealBtn.disabled=false;
       revealBtn.textContent='Replay chord';
       rerollBtn.disabled=true;
+      // Do not leave the main-page audio control permanently locked if a replay
+      // exits through an error after reveal() disabled it.
+      audioBtn.disabled=false;
+      updateAudioButton();
       return false;
     }
   }
