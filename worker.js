@@ -186,22 +186,37 @@ export default {
     const simMarker = simMarkerMatch ? simMarkerMatch[0] : null;
     if (simMarker) {
       const bridge = `
+  function chordlePrepareCompletedAudio(notes){
+    const clean=Array.isArray(notes)?notes.map(Number):[];
+    if(clean.length!==6 || !clean.every(n=>Number.isInteger(n)&&n>=0&&n<=36)) return false;
+
+    // The static HTML ships #audioBtn disabled. Restore the synth state first,
+    // before any badge/panel work that could fail, so a completed chord is
+    // always playable immediately when the homepage reconstructs it.
+    stopAudio(true);
+    audioSuppressed=false;
+    currentNotes=[...clean];
+    revealedCount=clean.length;
+    audioBtn.disabled=false;
+    updateAudioButton();
+    return true;
+  }
+
   function chordleRestoreCompletedRoll(summary){
     try{
       if(!summary || !Array.isArray(summary.notes) || summary.notes.length!==6) return false;
 
       const notes=summary.notes.map(Number);
+      chordlePrepareCompletedAudio(notes);
+
       const badges=(Array.isArray(summary.badges) && summary.badges.length)
         ? summary.badges
         : [...analyze(notes),...wholeChordBadges(notes)];
       const total=Math.max(0,Math.round(Number(summary.score)||calculateRollTotal(notes)));
       const named=identifyChord(notes);
 
-      stopAudio(true);
-      audioSuppressed=false;
-      currentNotes=[...notes];
       currentBadges=[...badges];
-      revealedCount=notes.length;
+      displayedScore=total;
       displayedScore=total;
       persistCurrentRevealProgress=false;
 
@@ -426,6 +441,7 @@ export default {
       writeSeenBadges();
       if(location.hash==='#badges') renderBadgeIndexPage();
     },
+    prepareCompletedAudio:chordlePrepareCompletedAudio,
     restoreCompletedRoll:chordleRestoreCompletedRoll,
     replayCompletedRoll:chordleReplayCompletedRoll
   };
@@ -433,7 +449,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=rarity-tint-recovery-20261004-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=homepage-audio-restore-20261004-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
