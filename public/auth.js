@@ -2722,6 +2722,24 @@ function renderStableWinner(todayRolls,todayProfiles){
   state.leaderboardWinnerKey=signature;
 }
 
+const USER_BADGE_PAGE_SIZE=1000;
+
+async function fetchAllUserBadgeRows(){
+  const all=[];
+  for(let from=0;;from+=USER_BADGE_PAGE_SIZE){
+    const {data,error}=await supabase.from('chordle_user_badges')
+      .select('user_id,badge_key,discovered_at')
+      .order('user_id',{ascending:true})
+      .order('badge_key',{ascending:true})
+      .range(from,from+USER_BADGE_PAGE_SIZE-1);
+    if(error)return {data:null,error};
+    const rows=data||[];
+    all.push(...rows);
+    if(rows.length<USER_BADGE_PAGE_SIZE)break;
+  }
+  return {data:all,error:null};
+}
+
 async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={}){
   unlockExistingPages();
   configureLeaderboardTabs();
@@ -2783,8 +2801,9 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
       appendRow(renderedMetricRow(profile,index+1,formatScore(profile.lifetime_score)));
     });
   }else if(state.leaderboardTab==='badges'){
-    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key');
+    const {data,error}=await fetchAllUserBadgeRows();
     if(seq!==state.leaderboardRenderSeq)return;
+    if(error)console.warn('Chordle badge leaderboard:',error.message);
     const badgesByUser=new Map();
     for(const b of (data||[])){
       if(!badgesByUser.has(b.user_id))badgesByUser.set(b.user_id,new Set());
@@ -2799,10 +2818,18 @@ async function renderLeaderboard(tab=state.leaderboardTab,{refreshWinner=true}={
       appendRow(renderedMetricRow(entry.profile,index+1,entry.count.toLocaleString()+' badges'));
     });
   }else if(state.leaderboardTab==='discovered'){
-    const {data}=await supabase.from('chordle_user_badges').select('user_id,badge_key,discovered_at').order('discovered_at',{ascending:true});
+    const {data,error}=await fetchAllUserBadgeRows();
     if(seq!==state.leaderboardRenderSeq)return;
+    if(error)console.warn('Chordle discovery leaderboard:',error.message);
+    const ordered=[...(data||[])].sort((a,b)=>{
+      const at=Date.parse(a.discovered_at||0)||0;
+      const bt=Date.parse(b.discovered_at||0)||0;
+      return at-bt
+        ||String(a.user_id||'').localeCompare(String(b.user_id||''))
+        ||String(a.badge_key||'').localeCompare(String(b.badge_key||''));
+    });
     const firstByBadge=new Map();
-    for(const b of (data||[]))if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
+    for(const b of ordered)if(!firstByBadge.has(b.badge_key))firstByBadge.set(b.badge_key,b.user_id);
     const counts=new Map();
     for(const uid of firstByBadge.values())counts.set(uid,(counts.get(uid)||0)+1);
     const ids=[...counts.keys()];
