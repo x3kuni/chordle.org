@@ -462,8 +462,11 @@ html.chordle-info-route .admin-luck{display:none!important}
 .chordle-info-copy a{color:#eef0f4;font-weight:800;text-decoration:none}
 .chordle-info-copy a:hover{text-decoration:underline}
 .chordle-update-card{padding:20px 22px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.035)}
+.chordle-update-card+.chordle-update-card{margin-top:14px}
 .chordle-update-title{margin:0 0 10px;color:#eef0f4;font-size:19px;font-weight:850}
 .chordle-update-body{margin:0!important;color:#b9bdc5}
+.chordle-update-list{margin:0;padding-left:22px;color:#b9bdc5}
+.chordle-update-list li{margin:7px 0;line-height:1.55}
 .ca-save-overlay{background:rgba(0,0,0,.52);backdrop-filter:blur(5px)}
 .ca-save-overlay .ca-modal{position:relative;width:min(450px,100%);text-align:center;border-radius:14px}
 .ca-save-overlay .ca-modal h2{margin:6px 34px 7px;text-align:center;font-size:27px}
@@ -1078,16 +1081,46 @@ function buildHowToPlayPage(copy){
 }
 
 function buildUpdatesPage(copy){
-  const card=document.createElement('section');
-  card.className='chordle-update-card';
-  const title=document.createElement('h2');
-  title.className='chordle-update-title';
-  title.textContent='Beta 0.1 - October 2, 2026';
-  const body=document.createElement('p');
-  body.className='chordle-update-body';
-  body.textContent='The beta version of the game is officially public';
-  card.append(title,body);
-  copy.appendChild(card);
+  const beta02=document.createElement('section');
+  beta02.className='chordle-update-card';
+
+  const beta02Title=document.createElement('h2');
+  beta02Title.className='chordle-update-title';
+  beta02Title.textContent='Beta 0.2 - October 3, 2026';
+
+  const beta02List=document.createElement('ul');
+  beta02List.className='chordle-update-list';
+  [
+    'Account and roll data are now saved server-side instead of depending on the browser',
+    'Added share button',
+    'Added chord replay feature',
+    'Added chord roll history',
+    'Added like button on profiles',
+    'Added first discovery list on profiles',
+    'Added New and First Discovery boxes on badges',
+    'Added badge index sorting',
+    'Globally synced daily resets for all players',
+    'Many, many, many, many leaderboard chord panel adjustments',
+    'Uncountable bug fixes and visual adjustments'
+  ].forEach(text=>{
+    const item=document.createElement('li');
+    item.textContent=text;
+    beta02List.appendChild(item);
+  });
+
+  beta02.append(beta02Title,beta02List);
+
+  const beta01=document.createElement('section');
+  beta01.className='chordle-update-card';
+  const beta01Title=document.createElement('h2');
+  beta01Title.className='chordle-update-title';
+  beta01Title.textContent='Beta 0.1 - October 2, 2026';
+  const beta01Body=document.createElement('p');
+  beta01Body.className='chordle-update-body';
+  beta01Body.textContent='The beta version of the game is officially public';
+  beta01.append(beta01Title,beta01Body);
+
+  copy.append(beta02,beta01);
 }
 
 function mountInfoPage(){
