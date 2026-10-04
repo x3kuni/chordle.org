@@ -93,8 +93,22 @@ export default {
       /  function dailyRoll\(\) \{[\s\S]*?\n  \}\n\n  function randomRoll\(\)/,
       `  const ANON_MAX_SCORE_EXCLUSIVE=5000000;
 
+  function chordleHasPersistedAuthSession(){
+    try{
+      const stored=JSON.parse(localStorage.getItem('sb-cpfmiszujdyrtadqtdbj-auth-token')||'null');
+      return !!(stored?.access_token || stored?.refresh_token || stored?.user?.id);
+    }catch{
+      return false;
+    }
+  }
+
   function chordleAnonymousRollGuardActive(){
-    return window.chordleAuth?.isAuthenticated?.() !== true;
+    if(window.chordleAuth?.isAuthenticated?.()===true) return false;
+    // The inline game script runs before auth.js finishes restoring Supabase.
+    // A persisted session means this browser is a signed-in player even if the
+    // async auth state has not populated window.chordleAuth yet.
+    if(chordleHasPersistedAuthSession()) return false;
+    return true;
   }
 
   function chordleApplyAnonymousScoreCap(notes){
@@ -410,7 +424,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=anonymous-anti-abuse-20261004-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=anonymous-anti-abuse-20261004-2"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
