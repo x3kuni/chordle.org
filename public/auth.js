@@ -441,180 +441,119 @@ html.chordle-external-replay #nextChord{display:none!important}
 }
 
 /* Prototype: rarity-tinted surfaces.
-   The base stays dark/neutral, but every revealed rarity gets a faint wash of
-   its own color before the familiar outer/inset glow is layered on top. */
-@property --chordle-surface-angle{
-  syntax:"<angle>";
-  initial-value:0deg;
-  inherits:false;
-}
+   Reuses Chordle's EXISTING global --gradient-angle clock and rarity glow.
+   The only new visual layer here is the darker rarity-tinted base underneath. */
 .chordle-rarity-surface{
-  --chordle-surface-base:#1a1b1f;
-  --chordle-surface-tint:rgba(215,217,222,.035);
-  --chordle-surface-border:rgba(215,217,222,.14);
-  --chordle-surface-glow:rgba(215,217,222,.09);
-  --chordle-surface-inner:rgba(215,217,222,.025);
-  --chordle-spin-a:rgba(215,217,222,.070);
-  --chordle-spin-b:rgba(255,255,255,.040);
-  --chordle-spin-c:rgba(215,217,222,.055);
+  --chordle-surface-base:#1b1c1f;
+  --chordle-surface-rgb:154,160,166;
+  --chordle-surface-start:.10;
+  --chordle-surface-end:.05;
+  --chordle-surface-border:.30;
+  --chordle-surface-ring:.045;
+  --chordle-surface-glow:.12;
   background:
-    conic-gradient(
-      from var(--chordle-surface-angle) at 50% 50%,
-      transparent 0deg 34deg,
-      var(--chordle-spin-a) 54deg,
-      transparent 92deg 150deg,
-      var(--chordle-spin-b) 176deg,
-      transparent 210deg 278deg,
-      var(--chordle-spin-c) 304deg,
-      transparent 338deg 360deg
-    ),
-    linear-gradient(var(--chordle-surface-tint),var(--chordle-surface-tint)),
-    var(--chordle-surface-base)!important;
-  border-color:var(--chordle-surface-border)!important;
+    linear-gradient(
+      var(--gradient-angle),
+      rgba(var(--chordle-surface-rgb),var(--chordle-surface-start)) 0%,
+      var(--chordle-surface-base) 46%,
+      rgba(var(--chordle-surface-rgb),var(--chordle-surface-end)) 100%
+    )!important;
+  border-color:rgba(var(--chordle-surface-rgb),var(--chordle-surface-border))!important;
   box-shadow:
-    0 0 18px var(--chordle-surface-glow),
-    inset 0 0 24px var(--chordle-surface-inner)!important;
-  animation:chordleRaritySurfaceSpin 8.5s linear infinite;
-}
-@keyframes chordleRaritySurfaceSpin{
-  to{--chordle-surface-angle:360deg}
-}
-@media(prefers-reduced-motion:reduce){
-  .chordle-rarity-surface{animation:none!important}
+    0 0 0 1px rgba(var(--chordle-surface-rgb),var(--chordle-surface-ring)),
+    0 0 34px rgba(var(--chordle-surface-rgb),var(--chordle-surface-glow))!important;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="common"]{
-  --chordle-surface-tint:rgba(215,217,222,.035);
-  --chordle-surface-border:rgba(215,217,222,.13);
-  --chordle-surface-glow:rgba(215,217,222,.07);
-  --chordle-surface-inner:rgba(215,217,222,.020);
-  --chordle-spin-a:rgba(235,237,241,.060);
-  --chordle-spin-b:rgba(255,255,255,.035);
-  --chordle-spin-c:rgba(205,208,216,.050);
+  --chordle-surface-base:#1b1c1f;
+  --chordle-surface-rgb:154,160,166;
+  --chordle-surface-start:.055;--chordle-surface-end:.025;
+  --chordle-surface-border:.16;--chordle-surface-ring:.025;--chordle-surface-glow:.055;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="uncommon"]{
-  --chordle-surface-tint:rgba(98,213,139,.055);
-  --chordle-surface-border:rgba(98,213,139,.19);
-  --chordle-surface-glow:rgba(98,213,139,.13);
-  --chordle-surface-inner:rgba(98,213,139,.035);
-  --chordle-spin-a:rgba(98,213,139,.105);
-  --chordle-spin-b:rgba(163,237,188,.060);
-  --chordle-spin-c:rgba(76,193,117,.080);
+  --chordle-surface-base:#19201c;
+  --chordle-surface-rgb:98,213,139;
+  --chordle-surface-start:.085;--chordle-surface-end:.040;
+  --chordle-surface-border:.30;--chordle-surface-ring:.045;--chordle-surface-glow:.10;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="rare"]{
-  --chordle-surface-tint:rgba(94,167,255,.060);
-  --chordle-surface-border:rgba(94,167,255,.21);
-  --chordle-surface-glow:rgba(94,167,255,.15);
-  --chordle-surface-inner:rgba(94,167,255,.040);
-  --chordle-spin-a:rgba(94,167,255,.110);
-  --chordle-spin-b:rgba(147,197,255,.065);
-  --chordle-spin-c:rgba(70,137,226,.085);
+  --chordle-surface-base:#191e25;
+  --chordle-surface-rgb:94,167,255;
+  --chordle-surface-start:.095;--chordle-surface-end:.045;
+  --chordle-surface-border:.36;--chordle-surface-ring:.050;--chordle-surface-glow:.13;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="epic"]{
-  --chordle-surface-tint:rgba(170,121,255,.065);
-  --chordle-surface-border:rgba(170,121,255,.22);
-  --chordle-surface-glow:rgba(170,121,255,.16);
-  --chordle-surface-inner:rgba(170,121,255,.042);
-  --chordle-spin-a:rgba(170,121,255,.115);
-  --chordle-spin-b:rgba(206,174,255,.065);
-  --chordle-spin-c:rgba(135,86,228,.090);
+  --chordle-surface-base:#1d1924;
+  --chordle-surface-rgb:170,121,255;
+  --chordle-surface-start:.105;--chordle-surface-end:.050;
+  --chordle-surface-border:.42;--chordle-surface-ring:.055;--chordle-surface-glow:.16;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="legendary"]{
-  --chordle-surface-base:#1c1c19;
-  --chordle-surface-tint:rgba(255,216,77,.070);
-  --chordle-surface-border:rgba(255,216,77,.24);
-  --chordle-surface-glow:rgba(255,216,77,.17);
-  --chordle-surface-inner:rgba(255,216,77,.046);
-  --chordle-spin-a:rgba(255,216,77,.125);
-  --chordle-spin-b:rgba(255,236,153,.070);
-  --chordle-spin-c:rgba(224,179,42,.095);
+  --chordle-surface-base:#211f18;
+  --chordle-surface-rgb:255,216,77;
+  --chordle-surface-start:.115;--chordle-surface-end:.055;
+  --chordle-surface-border:.50;--chordle-surface-ring:.060;--chordle-surface-glow:.20;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="mythic"]{
-  --chordle-surface-base:#1d191b;
-  --chordle-surface-tint:rgba(255,77,99,.070);
-  --chordle-surface-border:rgba(255,77,99,.24);
-  --chordle-surface-glow:rgba(255,77,99,.17);
-  --chordle-surface-inner:rgba(255,77,99,.046);
-  --chordle-spin-a:rgba(255,77,99,.125);
-  --chordle-spin-b:rgba(255,134,151,.070);
-  --chordle-spin-c:rgba(210,50,72,.095);
+  --chordle-surface-base:#21191c;
+  --chordle-surface-rgb:255,77,94;
+  --chordle-surface-start:.120;--chordle-surface-end:.058;
+  --chordle-surface-border:.52;--chordle-surface-ring:.065;--chordle-surface-glow:.22;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="ultra"]{
-  --chordle-surface-base:#1d191d;
-  --chordle-surface-tint:rgba(255,114,198,.070);
-  --chordle-surface-border:rgba(255,114,198,.24);
-  --chordle-surface-glow:rgba(255,114,198,.17);
-  --chordle-surface-inner:rgba(255,114,198,.046);
-  --chordle-spin-a:rgba(255,114,198,.125);
-  --chordle-spin-b:rgba(255,174,222,.070);
-  --chordle-spin-c:rgba(218,73,165,.095);
+  --chordle-surface-base:#211a20;
+  --chordle-surface-rgb:255,114,198;
+  --chordle-surface-start:.125;--chordle-surface-end:.060;
+  --chordle-surface-border:.54;--chordle-surface-ring:.070;--chordle-surface-glow:.24;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="godly"]{
-  --chordle-surface-base:#1b1c1f;
-  --chordle-surface-tint:rgba(235,237,241,.060);
-  --chordle-surface-border:rgba(235,237,241,.24);
-  --chordle-surface-glow:rgba(235,237,241,.15);
-  --chordle-surface-inner:rgba(255,255,255,.042);
-  --chordle-spin-a:rgba(255,255,255,.110);
-  --chordle-spin-b:rgba(185,193,207,.070);
-  --chordle-spin-c:rgba(238,241,246,.090);
+  --chordle-surface-base:#1e1f22;
+  --chordle-surface-rgb:255,255,255;
+  --chordle-surface-start:.105;--chordle-surface-end:.050;
+  --chordle-surface-border:.52;--chordle-surface-ring:.080;--chordle-surface-glow:.22;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="omnipotent"]{
   --chordle-surface-base:#111216;
-  --chordle-surface-tint:rgba(150,154,162,.055);
-  --chordle-surface-border:rgba(186,190,199,.20);
-  --chordle-surface-glow:rgba(180,184,193,.13);
-  --chordle-surface-inner:rgba(210,214,222,.032);
-  --chordle-spin-a:rgba(194,198,207,.095);
-  --chordle-spin-b:rgba(112,117,128,.060);
-  --chordle-spin-c:rgba(232,234,239,.075);
+  --chordle-surface-rgb:150,154,162;
+  --chordle-surface-start:.075;--chordle-surface-end:.032;
+  --chordle-surface-border:.34;--chordle-surface-ring:.050;--chordle-surface-glow:.12;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="eternal"]{
-  --chordle-surface-base:#1e1a17;
-  --chordle-surface-tint:rgba(217,121,50,.075);
-  --chordle-surface-border:rgba(235,150,78,.25);
-  --chordle-surface-glow:rgba(217,121,50,.18);
-  --chordle-surface-inner:rgba(255,177,102,.048);
-  --chordle-spin-a:rgba(255,151,68,.130);
-  --chordle-spin-b:rgba(255,205,143,.075);
-  --chordle-spin-c:rgba(213,101,29,.100);
+  --chordle-surface-base:#211b17;
+  --chordle-surface-rgb:217,121,50;
+  --chordle-surface-start:.125;--chordle-surface-end:.060;
+  --chordle-surface-border:.52;--chordle-surface-ring:.070;--chordle-surface-glow:.21;
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="absolute"]{
-  --chordle-surface-base:#18151d;
-  --chordle-surface-tint:rgba(154,101,219,.080);
-  --chordle-surface-border:rgba(177,126,235,.27);
-  --chordle-surface-glow:rgba(145,83,215,.21);
-  --chordle-surface-inner:rgba(190,139,245,.052);
-  --chordle-spin-a:rgba(177,113,242,.135);
-  --chordle-spin-b:rgba(218,179,255,.080);
-  --chordle-spin-c:rgba(118,58,181,.105);
+  --chordle-surface-base:#1c1722;
+  --chordle-surface-rgb:154,101,219;
+  --chordle-surface-start:.135;--chordle-surface-end:.065;
+  --chordle-surface-border:.56;--chordle-surface-ring:.080;--chordle-surface-glow:.25;
 }
+
+/* Supreme uses the game's established rotating rainbow BORDER gradient.
+   The center stays as the new subtle dark tint. */
 .chordle-rarity-surface[data-chordle-surface-rarity="supreme"]{
-  --chordle-surface-base:#1a1b1f;
-  --chordle-surface-tint:rgba(146,146,176,.030);
-  --chordle-surface-border:rgba(187,169,255,.24);
-  --chordle-surface-glow:rgba(170,121,255,.12);
-  --chordle-surface-inner:rgba(255,114,198,.035);
-  --chordle-spin-a:rgba(255,100,100,.105);
-  --chordle-spin-b:rgba(94,167,255,.105);
-  --chordle-spin-c:rgba(255,114,198,.105);
+  --chordle-surface-base:#1d1b22;
+  border-color:transparent!important;
   background:
-    conic-gradient(
-      from var(--chordle-surface-angle) at 50% 50%,
-      rgba(255,100,100,.090),
-      rgba(255,216,77,.070) 16%,
-      rgba(98,213,139,.072) 32%,
-      rgba(94,167,255,.085) 50%,
-      rgba(170,121,255,.090) 68%,
-      rgba(255,114,198,.085) 84%,
-      rgba(255,100,100,.090)
-    ),
-    linear-gradient(var(--chordle-surface-tint),var(--chordle-surface-tint)),
-    var(--chordle-surface-base)!important;
-  border-color:var(--chordle-surface-border)!important;
+    linear-gradient(
+      var(--gradient-angle),
+      rgba(255,84,84,.075) 0%,
+      rgba(255,216,77,.055) 18%,
+      rgba(98,213,139,.055) 36%,
+      rgba(94,167,255,.075) 55%,
+      rgba(170,121,255,.085) 74%,
+      rgba(255,114,198,.070) 100%
+    ) padding-box,
+    linear-gradient(var(--chordle-surface-base),var(--chordle-surface-base)) padding-box,
+    linear-gradient(
+      var(--gradient-angle),
+      #ff5454 0%,#ffd84d 18%,#62d58b 36%,#5ea7ff 55%,#aa79ff 74%,#ff72c6 100%
+    ) border-box!important;
   box-shadow:
-    0 0 14px rgba(94,167,255,.11),
-    0 0 22px rgba(170,121,255,.09),
-    inset 0 0 26px rgba(255,114,198,.035)!important;
+    0 0 15px rgba(94,167,255,.12),
+    0 0 30px rgba(170,121,255,.18),
+    0 0 44px rgba(255,114,198,.10)!important;
 }
 
 /* Badge boxes get the same treatment without changing their content/layout. */
@@ -2544,6 +2483,7 @@ function markRaritySurface(el,rarity){
   if(!id)return clearRaritySurface(el);
   el.classList.add('chordle-rarity-surface');
   el.dataset.chordleSurfaceRarity=id;
+  nativeApp()?.syncRarityGradient?.();
   return el;
 }
 
