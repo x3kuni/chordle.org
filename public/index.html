@@ -5254,16 +5254,7 @@
   }
   function readAwardedDay(){ try { return localStorage.getItem(LIFETIME_DAY_KEY)||''; } catch { return ''; } }
   function writeAwardedDay(day){ try { localStorage.setItem(LIFETIME_DAY_KEY,day); } catch {} }
-  function updateNextChordCountdown(){
-    if(!nextChordEl.classList.contains('visible')) return;
-    const now=new Date();
-    const next=new Date(now); next.setHours(24,0,0,0);
-    let secs=Math.max(0,Math.floor((next-now)/1000));
-    const h=String(Math.floor(secs/3600)).padStart(2,'0'); secs%=3600;
-    const m=String(Math.floor(secs/60)).padStart(2,'0');
-    const sec=String(secs%60).padStart(2,'0');
-    nextChordEl.textContent=`next chord in ${h}:${m}:${sec}`;
-  }
+  // Countdown text is owned by auth.js, which uses one Pacific-time clock for every player.
   function animateLifetime(from,to,duration=900){
     lifetimeScoreEl.classList.add('visible','pop');
     setTimeout(()=>lifetimeScoreEl.classList.remove('pop'),700);
@@ -5287,7 +5278,7 @@
     animateLifetime(before,after);
   }
   refreshLifetimeDisplay();
-  setInterval(()=>{ updateNextChordCountdown(); refreshChordDate(); },1000);
+  setInterval(()=>{ refreshChordDate(); },1000);
 
   function buildPiano(){
     piano.innerHTML='';
@@ -5789,7 +5780,7 @@
     chordCard.classList.add('metadata-visible');
     scoreBox.classList.add('metadata-visible');
     nextChordEl.classList.add('visible');
-    updateNextChordCountdown();
+
     revealLifetime(total,countLifetime);
     flashFinalScore();
   }
