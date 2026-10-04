@@ -424,7 +424,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=anonymous-anti-abuse-20261004-2"></script>';
+    const tag = '<script type="module" src="/auth.js?v=completed-roll-replay-button-20261004-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
