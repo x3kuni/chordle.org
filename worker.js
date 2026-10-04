@@ -21,6 +21,28 @@ export default {
     if (html.includes("</head>") && !html.includes('property="og:title"')) {
       html = html.replace("</head>", socialMeta + "\n</head>");
     }
+    const anonymousAntiAbuseStyle = `
+<style id="chordle-anonymous-anti-abuse-style">
+.badge.anonymous-undiscovered{
+  background:#292b30 !important;
+  border-color:#4a4d54 !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+.badge.anonymous-undiscovered::before,
+.badge.anonymous-undiscovered::after{display:none !important;}
+.badge.anonymous-undiscovered .badge-name{
+  color:#d4d6db !important;
+  -webkit-text-fill-color:#d4d6db !important;
+  background:none !important;
+  filter:none !important;
+  text-shadow:none !important;
+}
+.badge.anonymous-undiscovered .points{color:#f2f3f5 !important;}
+</style>`;
+    if (html.includes("</head>") && !html.includes('chordle-anonymous-anti-abuse-style')) {
+      html = html.replace("</head>", anonymousAntiAbuseStyle + "\n</head>");
+    }
     html = html.replace("return hash==='#home' || hash==='' || hash==='#';", "return hash==='#home' || hash==='' || hash==='#' || hash.startsWith('#replay/');");
     // Global Chordle day: midnight in America/Los_Angeles for every player.
     // The helper is injected before dailyRoll/localDayKey are defined. The date
@@ -63,6 +85,53 @@ export default {
       /    const d=new Date\(\);\n    const day=`\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`;/,
       "    const day=chordlePacificDayKey();"
     );
+
+    // Anonymous anti-farming: guests can still experience the full game, but
+    // their browser-owned daily roll is always kept below the 5,000,000 Godly
+    // threshold. Signed-in users are never filtered.
+    html = html.replace(
+      /  function dailyRoll\(\) \{[\s\S]*?\n  \}\n\n  function randomRoll\(\)/,
+      `  const ANON_MAX_SCORE_EXCLUSIVE=5000000;
+
+  function chordleAnonymousRollGuardActive(){
+    return window.chordleAuth?.isAuthenticated?.() !== true;
+  }
+
+  function chordleApplyAnonymousScoreCap(notes){
+    const clean=Array.isArray(notes)?notes.map(Number):[];
+    if(clean.length!==6 || !clean.every(n=>Number.isInteger(n)&&n>=0&&n<=36)) return clean;
+    if(!chordleAnonymousRollGuardActive()) return clean;
+
+    let candidate=clean;
+    while(calculateRollTotal(candidate)>=ANON_MAX_SCORE_EXCLUSIVE){
+      candidate=randomRoll();
+    }
+    return candidate;
+  }
+
+  function dailyRoll() {
+    const day=chordlePacificDayKey();
+    try{
+      const stored=JSON.parse(localStorage.getItem(LOCAL_DAILY_ROLL_KEY)||'null');
+      if(stored?.day===day && Array.isArray(stored.notes) && stored.notes.length===6){
+        const notes=stored.notes.map(Number);
+        if(notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36)){
+          const guarded=chordleApplyAnonymousScoreCap(notes);
+          if(guarded.some((note,index)=>note!==notes[index])){
+            try{ localStorage.setItem(LOCAL_DAILY_ROLL_KEY,JSON.stringify({day,notes:guarded})); }catch{}
+          }
+          return guarded;
+        }
+      }
+    }catch{}
+
+    const notes=chordleApplyAnonymousScoreCap(randomRoll());
+    try{ localStorage.setItem(LOCAL_DAILY_ROLL_KEY,JSON.stringify({day,notes})); }catch{}
+    return notes;
+  }
+
+  function randomRoll()`
+    );
     html = html.replace(
       /  function localDayKey\(d=new Date\(\)\)\{ return `\$\{d\.getFullYear\(\)\}-\$\{String\(d\.getMonth\(\)\+1\)\.padStart\(2,'0'\)\}-\$\{String\(d\.getDate\(\)\)\.padStart\(2,'0'\)\}`; \}/g,
       "  function localDayKey(d=new Date()){ return chordlePacificDayKey(d); }"
@@ -70,6 +139,21 @@ export default {
     html = html.replace(
       "    const next=new Date(now); next.setHours(24,0,0,0);",
       "    const next=chordleNextPacificMidnight(now);"
+    );
+
+    html = html.replace(
+      "  async function showBadge(badge,nextBadge=null){",
+      "  function chordleShouldConcealAnonymousBadge(badge){\n    if(window.chordleAuth?.isAuthenticated?.()===true || badge?.special) return false;\n    const key=badgeSeenKey(badge);\n    const discovered=window.chordleAuth?.isBadgeGloballyDiscovered?.(key);\n    if(discovered===false) return true;\n    const rarity=String(badge?.rarity||'common').toLowerCase();\n    return (discovered===null || discovered===undefined) && (RANK[rarity]??-1)>=RANK.godly;\n  }\n\n  function chordleShouldConcealAnonymousRarity(rarity){\n    if(window.chordleAuth?.isAuthenticated?.()===true) return false;\n    const discovered=window.chordleAuth?.isRarityGloballyDiscovered?.(rarity);\n    if(discovered===false) return true;\n    const r=String(rarity||'common').toLowerCase();\n    return (discovered===null || discovered===undefined) && (RANK[r]??-1)>=RANK.godly;\n  }\n\n  async function showBadge(badge,nextBadge=null){\n    if(chordleShouldConcealAnonymousBadge(badge)){\n      const badgeViewportAnchor=captureBadgeViewportAnchor();\n      const el=document.createElement('div');\n      el.className='badge anonymous-undiscovered show';\n      el.setAttribute('aria-label','Undiscovered badge');\n      el.innerHTML=`<div class=\"badge-row\"><div><div class=\"badge-name-line\"><div class=\"badge-name\">???</div></div></div><div class=\"badge-meta\"><div class=\"points\">+${Number(badge.points||0).toLocaleString()}</div></div></div>`;\n      badgesEl.insertBefore(el,badgesEl.firstChild);\n      restoreBadgeViewportAnchor(badgeViewportAnchor);\n      badgeImpactMoments.set(badge,performance.now());\n      return false;\n    }"
+    );
+
+    html = html.replace(
+      "    if(!currentBadge || !nextBadge || scheduledBadgePrestarts.has(nextBadge)) return false;",
+      "    if(!currentBadge || !nextBadge || scheduledBadgePrestarts.has(nextBadge) || chordleShouldConcealAnonymousBadge(nextBadge)) return false;"
+    );
+
+    html = html.replace(
+      "    revealLifetime(total,countLifetime);\n    flashFinalScore();\n  }",
+      "    const concealAnonymousRarity=chordleShouldConcealAnonymousRarity(tier.id);\n    if(concealAnonymousRarity){\n      applyUnifiedRarity(notes,'common');\n      for(const panel of [chordCard,scoreBox]){\n        panel.classList.remove(...FINAL_RARITY_CLASSES.map(r=>`rarity-${r}`));\n        panel.classList.add('finalized','rarity-common');\n      }\n      scoreEl.textContent='???';\n      scoreRarityEl.textContent='???';\n      scorePercentileEl.textContent='';\n      scorePercentileEl.classList.remove('visible','top','bottom');\n      fitScoreToPanel();\n      revealLifetime(0,false);\n    }else{\n      revealLifetime(total,countLifetime);\n      flashFinalScore();\n    }\n  }"
     );
 
     // De-duplicate only the two final whole-chord analysis badges. The existing
@@ -326,7 +410,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=leaderboard-badge-pagination-20261004-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=anonymous-anti-abuse-20261004-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
