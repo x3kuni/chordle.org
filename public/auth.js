@@ -1715,6 +1715,13 @@ function renderRestoredBadge(badge,notes){
   return el;
 }
 
+function syncCompletedRollReplayButton(){
+  const btn=document.getElementById('revealBtn');
+  if(!btn||state.externalReplay||!state.todayRoll)return;
+  if(btn.disabled)btn.disabled=false;
+  if(btn.textContent!=='Replay chord')btn.textContent='Replay chord';
+}
+
 function restoreDailyRoll(roll){
   if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return false;
   const summary=rollSummary(roll);
@@ -1727,6 +1734,9 @@ function restoreDailyRoll(roll){
       if(state.profile)localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(Number(state.profile.lifetime_score)||0)));
     }catch{}
     const restored=nativeApp()?.restoreCompletedRoll?.(summary);
+    syncCompletedRollReplayButton();
+    requestAnimationFrame(syncCompletedRollReplayButton);
+    setTimeout(syncCompletedRollReplayButton,0);
     syncLifetimeDisplay();
     setTimeout(syncShareButton,0);
     setTimeout(()=>void syncFirstDiscoveryTags({allowProvisional:false,all:true}),120);
@@ -3313,18 +3323,35 @@ function wireRollCompletion(){
     observer.observe(next,{attributes:true,attributeFilter:["class"]});
   }
 
-  document.getElementById('revealBtn')?.addEventListener('click',event=>{
-    if(!state.session?.user&&!state.todayRoll&&!state.externalReplay){
-      markAnonymousRollStarted();
-      setTimeout(()=>captureAnonymousRoll({requireComplete:false}),0);
-    }
-    if(state.todayRoll){
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const summary=rollSummary(state.todayRoll);
-      if(summary)void nativeApp()?.replayCompletedRoll?.(summary);
-    }
-  },true);
+  const revealBtn=document.getElementById('revealBtn');
+  if(revealBtn){
+    const keepCompletedRollButtonSynced=()=>{
+      if(state.todayRoll&&!state.externalReplay)syncCompletedRollReplayButton();
+    };
+    new MutationObserver(keepCompletedRollButtonSynced).observe(revealBtn,{
+      childList:true,
+      subtree:true,
+      attributes:true,
+      attributeFilter:['disabled']
+    });
+
+    revealBtn.addEventListener('click',event=>{
+      if(!state.session?.user&&!state.todayRoll&&!state.externalReplay){
+        markAnonymousRollStarted();
+        setTimeout(()=>captureAnonymousRoll({requireComplete:false}),0);
+      }
+      if(state.todayRoll){
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const summary=rollSummary(state.todayRoll);
+        syncCompletedRollReplayButton();
+        if(summary){
+          Promise.resolve(nativeApp()?.replayCompletedRoll?.(summary))
+            .finally(syncCompletedRollReplayButton);
+        }
+      }
+    },true);
+  }
 }
 
 async function boot(){
