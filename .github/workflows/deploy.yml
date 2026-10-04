@@ -1,13 +1,13 @@
-name: Deploy Chordle
+name: Deploy Chordle Anonymous Guardrails Prototype
 
 on:
   push:
     branches:
-      - main
+      - prototype/anonymous-roll-guardrails-20261004
   workflow_dispatch:
 
 concurrency:
-  group: chordle-production
+  group: chordle-anonymous-guardrails-prototype
   cancel-in-progress: true
 
 permissions:
@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out repository
+      - name: Check out anonymous guardrails prototype
         uses: actions/checkout@v6
 
-      - name: Deploy Chordle to Cloudflare
+      - name: Deploy isolated anonymous guardrails prototype
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          command: deploy --name anonymous-roll-guardrails-chordle
