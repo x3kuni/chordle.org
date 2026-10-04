@@ -79,6 +79,18 @@ export default {
       "    const finalBadges=[...new Map(wholeChordBadges(notes).map(b=>[String(b?.key||b?.name||''),b])).values()];"
     );
 
+    // Anonymous players may not preview globally undiscovered badge identities.
+    // Keep their point contribution, but suppress the badge's rarity media and
+    // replace its visible contents with a neutral ??? card.
+    html = html.replace(
+      "  function scheduleNextRecordingAfterImpact(currentBadge,nextBadge){\n    if(disableCutscenes) return false;",
+      "  function scheduleNextRecordingAfterImpact(currentBadge,nextBadge){\n    if(disableCutscenes) return false;\n    if(window.__CHORDLE_ANON_POLICY__?.shouldHideBadge?.(nextBadge)) return false;"
+    );
+    html = html.replace(
+      "  async function showBadge(badge,nextBadge=null){\n    const rarity=String(badge.rarity||'common').toLowerCase();",
+      "  async function showBadge(badge,nextBadge=null){\n    const rarity=String(badge.rarity||'common').toLowerCase();\n    const anonymousHidden=!!window.__CHORDLE_ANON_POLICY__?.shouldHideBadge?.(badge);\n    if(anonymousHidden){\n      prestartedBadgePlayback.delete(badge);\n      const badgeViewportAnchor=captureBadgeViewportAnchor();\n      const el=document.createElement('div');\n      el.className='badge chordle-anon-undiscovered';\n      el.setAttribute('aria-label','Undiscovered badge');\n      el.innerHTML='<div class=\"badge-row\"><div><div class=\"badge-name-line\"><div class=\"badge-name\">???</div></div></div><div class=\"badge-meta\"><div class=\"rarity\">???</div><div class=\"points\">+'+Math.max(0,Math.round(Number(badge.points)||0)).toLocaleString()+'</div></div></div>';\n      badgesEl.insertBefore(el,badgesEl.firstChild);\n      restoreBadgeViewportAnchor(badgeViewportAnchor);\n      requestAnimationFrame(()=>el.classList.add('show'));\n      badgeImpactMoments.set(badge,performance.now());\n      return false;\n    }"
+    );
+
     // Expose the refined v0.90/v0.91 UI renderers that already live inside
     // Chordle's main IIFE. auth.js uses these instead of recreating those panels.
     // Match the SIM export by its stable prefix instead of the entire object.
@@ -326,7 +338,7 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=leaderboard-badge-pagination-20261004-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=anonymous-roll-guardrails-20261004-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
