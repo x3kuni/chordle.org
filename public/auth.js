@@ -3329,6 +3329,9 @@ async function boot(){
   wireReplayExitNavigation();
   wireNavigation();
   wireRollCompletion();
+  // Warm the global discovery cache during the long note-reveal window so
+  // anonymous badge masking is normally exact by the time badges appear.
+  void fetchGlobalBadgeExistCounts();
 
   document.addEventListener('click',event=>{
     const control=document.getElementById('profileColorControl');
@@ -3394,4 +3397,23 @@ async function boot(){
 boot();
 
 window.chordleSupabase=supabase;
-window.chordleAuth={showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,renderRollHistoryRoute,persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay};
+window.chordleAuth={
+  showLogin,showSignup,showAnonymousSavePrompt,logout,renderProfile,renderLeaderboard,renderRollHistoryRoute,
+  persistCompletedRoll,persistPendingAnonymousRoll,refreshBadgeExistCounts,renderBadgeDetailFromSupabase,
+  currentShareText,startOtherRollReplay,loadReplayFromHash,exitExternalReplay,hardExitReplay,
+  isAuthenticated:()=>!!state.session?.user,
+  isBadgeGloballyDiscovered:key=>{
+    if(!badgeExistCache.counts)return null;
+    return (badgeExistCache.counts.get(String(key))||0)>0;
+  },
+  isRarityGloballyDiscovered:rarity=>{
+    if(!badgeExistCache.counts)return null;
+    const target=String(rarity||'common').toLowerCase();
+    for(const [key,count] of badgeExistCache.counts){
+      if((Number(count)||0)<=0)continue;
+      const badge=nativeApp()?.getCatalogBadgeByKey?.(key);
+      if(String(badge?.rarity||'').toLowerCase()===target)return true;
+    }
+    return false;
+  }
+};
