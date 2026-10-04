@@ -1020,12 +1020,60 @@ function wireFirstDiscoveryBadges(){
   if(!badges)return;
   const observer=new MutationObserver(records=>{
     if(records.some(record=>record.addedNodes.length)){
+      // Apply the rarity tint in this mutation microtask, before the browser's
+      // next paint, instead of waiting for the 1s layout refresh.
+      syncBadgeRaritySurfaces(badges);
       applyCachedDiscoveryTags();
       scheduleFirstDiscoverySync({allowProvisional:true,all:false});
     }
   });
   observer.observe(badges,{childList:true,subtree:true});
+  syncBadgeRaritySurfaces(badges);
   scheduleFirstDiscoverySync({allowProvisional:false,all:true});
+}
+
+function wireRaritySurfaceSync(){
+  const badges=document.getElementById('badges');
+  if(badges){
+    const badgeObserver=new MutationObserver(records=>{
+      for(const record of records){
+        if(record.type==='attributes'){
+          const badge=record.target?.closest?.('.badge');
+          if(badge)syncBadgeRaritySurface(badge);
+          continue;
+        }
+        for(const node of record.addedNodes){
+          if(node?.nodeType!==Node.ELEMENT_NODE)continue;
+          syncBadgeRaritySurfaces(node);
+        }
+      }
+    });
+    badgeObserver.observe(badges,{
+      childList:true,
+      subtree:true,
+      attributes:true,
+      attributeFilter:['class']
+    });
+  }
+
+  const scoreRarity=document.getElementById('scoreRarity');
+  if(scoreRarity){
+    new MutationObserver(syncMainRaritySurfaces).observe(scoreRarity,{
+      childList:true,
+      subtree:true,
+      characterData:true
+    });
+  }
+
+  const scoreBox=document.getElementById('scoreBox');
+  if(scoreBox){
+    new MutationObserver(syncMainRaritySurfaces).observe(scoreBox,{
+      attributes:true,
+      attributeFilter:['class']
+    });
+  }
+
+  syncMainRaritySurfaces();
 }
 
 function syncShareButton(){
@@ -2392,7 +2440,12 @@ async function loadReplayFromHash(){
   syncShareButton();
 
   window.scrollTo({top:0,left:0,behavior:'auto'});
-  await nativeApp()?.startExternalReplay?.(summary);
+  beginReplayTintSuppression();
+  try{
+    await nativeApp()?.startExternalReplay?.(summary);
+  }finally{
+    endReplayTintSuppression();
+  }
   syncShareButton();
   return true;
 }
@@ -2538,15 +2591,23 @@ function nearestSurfacePanel(el){
   return fallback;
 }
 
+function badgeSurfaceRarity(badge){
+  if(!badge)return '';
+  for(const id of RARITY_ORDER){
+    if(badge.classList.contains(id))return id;
+  }
+  return normalizeSurfaceRarity(badge.querySelector?.('.rarity')?.textContent);
+}
+
+function syncBadgeRaritySurface(badge){
+  if(!badge?.classList?.contains('badge'))return null;
+  const rarity=badgeSurfaceRarity(badge);
+  return rarity?markRaritySurface(badge,rarity):badge;
+}
+
 function syncBadgeRaritySurfaces(root=document){
-  root?.querySelectorAll?.('.badge').forEach(badge=>{
-    let rarity='';
-    for(const id of RARITY_ORDER){
-      if(badge.classList.contains(id)){rarity=id;break;}
-    }
-    if(!rarity)rarity=normalizeSurfaceRarity(badge.querySelector('.rarity')?.textContent);
-    if(rarity)markRaritySurface(badge,rarity);
-  });
+  if(root?.classList?.contains?.('badge'))syncBadgeRaritySurface(root);
+  root?.querySelectorAll?.('.badge').forEach(syncBadgeRaritySurface);
 }
 
 function markRollCardRaritySurfaces(card,rarity){
@@ -2556,8 +2617,49 @@ function markRollCardRaritySurfaces(card,rarity){
   return card;
 }
 
-function syncMainRaritySurfaces(){
+function mainRarityPanels(){
   const scoreBox=document.getElementById('scoreBox');
+  const chordName=document.getElementById('chordName');
+  const chordPanel=nearestSurfacePanel(chordName);
+  return {scoreBox,chordPanel};
+}
+
+function clearMainRaritySurfaces({badges=false}={}){
+  const {scoreBox,chordPanel}=mainRarityPanels();
+  clearRaritySurface(scoreBox);
+  if(chordPanel&&chordPanel!==scoreBox)clearRaritySurface(chordPanel);
+  if(badges){
+    document.querySelectorAll('#badges .chordle-rarity-surface').forEach(clearRaritySurface);
+  }
+}
+
+function replayTintSuppressed(){
+  return document.documentElement.classList.contains('chordle-replay-generating');
+}
+
+function beginReplayTintSuppression(){
+  document.documentElement.classList.add('chordle-replay-generating');
+  clearMainRaritySurfaces({badges:true});
+}
+
+function endReplayTintSuppression(){
+  document.documentElement.classList.remove('chordle-replay-generating');
+  syncMainRaritySurfaces();
+  syncBadgeRaritySurfaces(document.getElementById('badges'));
+}
+
+function syncMainRaritySurfaces(){
+  const {scoreBox,chordPanel}=mainRarityPanels();
+
+  // Replays intentionally return the main UI to its pre-roll state. The
+  // auth-added tint is independent from the native rarity classes, so suppress
+  // it explicitly until the replay reveal has finished.
+  if(replayTintSuppressed()){
+    clearRaritySurface(scoreBox);
+    if(chordPanel&&chordPanel!==scoreBox)clearRaritySurface(chordPanel);
+    return;
+  }
+
   const rarityText=normalizeSurfaceRarity(document.getElementById('scoreRarity')?.textContent);
   let rarity=rarityText;
   if(!rarity){
@@ -2570,13 +2672,11 @@ function syncMainRaritySurfaces(){
 
   if(!rarity){
     clearRaritySurface(scoreBox);
+    if(chordPanel&&chordPanel!==scoreBox)clearRaritySurface(chordPanel);
     return;
   }
 
   markRaritySurface(scoreBox,rarity);
-
-  const chordName=document.getElementById('chordName');
-  const chordPanel=nearestSurfacePanel(chordName);
   if(chordPanel&&chordPanel!==scoreBox)markRaritySurface(chordPanel,rarity);
 
   const badges=document.getElementById('badges');
@@ -3346,8 +3446,12 @@ function wireRollCompletion(){
         const summary=rollSummary(state.todayRoll);
         syncCompletedRollReplayButton();
         if(summary){
+          beginReplayTintSuppression();
           Promise.resolve(nativeApp()?.replayCompletedRoll?.(summary))
-            .finally(syncCompletedRollReplayButton);
+            .finally(()=>{
+              endReplayTintSuppression();
+              syncCompletedRollReplayButton();
+            });
         }
       }
     },true);
@@ -3364,6 +3468,7 @@ async function boot(){
   mountInfoPage();
   mountShareButton();
   wireFirstDiscoveryBadges();
+  wireRaritySurfaceSync();
   wireReplayExitNavigation();
   wireNavigation();
   wireRollCompletion();
