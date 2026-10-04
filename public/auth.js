@@ -1726,6 +1726,14 @@ function syncCompletedRollReplayButton(){
   if(btn.textContent!=='Replay chord')btn.textContent='Replay chord';
 }
 
+function syncCompletedRollAudioButton(){
+  const btn=document.getElementById('audioBtn');
+  if(!btn||state.externalReplay||!state.todayRoll)return;
+  // The completed-roll native state has already been restored. This is a DOM
+  // safety net for the static HTML's initial disabled attribute.
+  if(btn.disabled)btn.disabled=false;
+}
+
 function restoreDailyRoll(roll){
   if(!roll||!Array.isArray(roll.notes)||roll.notes.length!==6)return false;
   const summary=rollSummary(roll);
@@ -1738,9 +1746,19 @@ function restoreDailyRoll(roll){
       if(state.profile)localStorage.setItem(LIFETIME_LOCAL_KEY,String(Math.round(Number(state.profile.lifetime_score)||0)));
     }catch{}
     const restored=nativeApp()?.restoreCompletedRoll?.(summary);
+    // Reassert the native synth state independently of the visual restore. This
+    // keeps Play/Stop working even if a later badge/panel restoration step fails.
+    nativeApp()?.prepareCompletedAudio?.(summary.notes);
     syncCompletedRollReplayButton();
-    requestAnimationFrame(syncCompletedRollReplayButton);
-    setTimeout(syncCompletedRollReplayButton,0);
+    syncCompletedRollAudioButton();
+    requestAnimationFrame(()=>{
+      syncCompletedRollReplayButton();
+      syncCompletedRollAudioButton();
+    });
+    setTimeout(()=>{
+      syncCompletedRollReplayButton();
+      syncCompletedRollAudioButton();
+    },0);
     syncLifetimeDisplay();
     setTimeout(syncShareButton,0);
     setTimeout(()=>void syncFirstDiscoveryTags({allowProvisional:false,all:true}),120);
