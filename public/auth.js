@@ -39,6 +39,7 @@ const state = {
   homeNeedsReset: false,
   todayNewBadgeKeys: new Set(),
   firstDiscoveryKeys: new Set(),
+  firstDiscoveriesRenderSeq: 0,
   dayKey: localDayKey()
 };
 
@@ -442,43 +443,80 @@ html.chordle-external-replay #nextChord{display:none!important}
 /* Prototype: rarity-tinted surfaces.
    The base stays dark/neutral, but every revealed rarity gets a faint wash of
    its own color before the familiar outer/inset glow is layered on top. */
+@property --chordle-surface-angle{
+  syntax:"<angle>";
+  initial-value:0deg;
+  inherits:false;
+}
 .chordle-rarity-surface{
   --chordle-surface-base:#1a1b1f;
   --chordle-surface-tint:rgba(215,217,222,.035);
   --chordle-surface-border:rgba(215,217,222,.14);
   --chordle-surface-glow:rgba(215,217,222,.09);
   --chordle-surface-inner:rgba(215,217,222,.025);
+  --chordle-spin-a:rgba(215,217,222,.070);
+  --chordle-spin-b:rgba(255,255,255,.040);
+  --chordle-spin-c:rgba(215,217,222,.055);
   background:
+    conic-gradient(
+      from var(--chordle-surface-angle) at 50% 50%,
+      transparent 0deg 34deg,
+      var(--chordle-spin-a) 54deg,
+      transparent 92deg 150deg,
+      var(--chordle-spin-b) 176deg,
+      transparent 210deg 278deg,
+      var(--chordle-spin-c) 304deg,
+      transparent 338deg 360deg
+    ),
     linear-gradient(var(--chordle-surface-tint),var(--chordle-surface-tint)),
     var(--chordle-surface-base)!important;
   border-color:var(--chordle-surface-border)!important;
   box-shadow:
     0 0 18px var(--chordle-surface-glow),
     inset 0 0 24px var(--chordle-surface-inner)!important;
+  animation:chordleRaritySurfaceSpin 8.5s linear infinite;
+}
+@keyframes chordleRaritySurfaceSpin{
+  to{--chordle-surface-angle:360deg}
+}
+@media(prefers-reduced-motion:reduce){
+  .chordle-rarity-surface{animation:none!important}
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="common"]{
   --chordle-surface-tint:rgba(215,217,222,.035);
   --chordle-surface-border:rgba(215,217,222,.13);
   --chordle-surface-glow:rgba(215,217,222,.07);
   --chordle-surface-inner:rgba(215,217,222,.020);
+  --chordle-spin-a:rgba(235,237,241,.060);
+  --chordle-spin-b:rgba(255,255,255,.035);
+  --chordle-spin-c:rgba(205,208,216,.050);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="uncommon"]{
   --chordle-surface-tint:rgba(98,213,139,.055);
   --chordle-surface-border:rgba(98,213,139,.19);
   --chordle-surface-glow:rgba(98,213,139,.13);
   --chordle-surface-inner:rgba(98,213,139,.035);
+  --chordle-spin-a:rgba(98,213,139,.105);
+  --chordle-spin-b:rgba(163,237,188,.060);
+  --chordle-spin-c:rgba(76,193,117,.080);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="rare"]{
   --chordle-surface-tint:rgba(94,167,255,.060);
   --chordle-surface-border:rgba(94,167,255,.21);
   --chordle-surface-glow:rgba(94,167,255,.15);
   --chordle-surface-inner:rgba(94,167,255,.040);
+  --chordle-spin-a:rgba(94,167,255,.110);
+  --chordle-spin-b:rgba(147,197,255,.065);
+  --chordle-spin-c:rgba(70,137,226,.085);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="epic"]{
   --chordle-surface-tint:rgba(170,121,255,.065);
   --chordle-surface-border:rgba(170,121,255,.22);
   --chordle-surface-glow:rgba(170,121,255,.16);
   --chordle-surface-inner:rgba(170,121,255,.042);
+  --chordle-spin-a:rgba(170,121,255,.115);
+  --chordle-spin-b:rgba(206,174,255,.065);
+  --chordle-spin-c:rgba(135,86,228,.090);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="legendary"]{
   --chordle-surface-base:#1c1c19;
@@ -486,6 +524,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(255,216,77,.24);
   --chordle-surface-glow:rgba(255,216,77,.17);
   --chordle-surface-inner:rgba(255,216,77,.046);
+  --chordle-spin-a:rgba(255,216,77,.125);
+  --chordle-spin-b:rgba(255,236,153,.070);
+  --chordle-spin-c:rgba(224,179,42,.095);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="mythic"]{
   --chordle-surface-base:#1d191b;
@@ -493,6 +534,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(255,77,99,.24);
   --chordle-surface-glow:rgba(255,77,99,.17);
   --chordle-surface-inner:rgba(255,77,99,.046);
+  --chordle-spin-a:rgba(255,77,99,.125);
+  --chordle-spin-b:rgba(255,134,151,.070);
+  --chordle-spin-c:rgba(210,50,72,.095);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="ultra"]{
   --chordle-surface-base:#1d191d;
@@ -500,6 +544,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(255,114,198,.24);
   --chordle-surface-glow:rgba(255,114,198,.17);
   --chordle-surface-inner:rgba(255,114,198,.046);
+  --chordle-spin-a:rgba(255,114,198,.125);
+  --chordle-spin-b:rgba(255,174,222,.070);
+  --chordle-spin-c:rgba(218,73,165,.095);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="godly"]{
   --chordle-surface-base:#1b1c1f;
@@ -507,6 +554,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(235,237,241,.24);
   --chordle-surface-glow:rgba(235,237,241,.15);
   --chordle-surface-inner:rgba(255,255,255,.042);
+  --chordle-spin-a:rgba(255,255,255,.110);
+  --chordle-spin-b:rgba(185,193,207,.070);
+  --chordle-spin-c:rgba(238,241,246,.090);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="omnipotent"]{
   --chordle-surface-base:#111216;
@@ -514,6 +564,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(186,190,199,.20);
   --chordle-surface-glow:rgba(180,184,193,.13);
   --chordle-surface-inner:rgba(210,214,222,.032);
+  --chordle-spin-a:rgba(194,198,207,.095);
+  --chordle-spin-b:rgba(112,117,128,.060);
+  --chordle-spin-c:rgba(232,234,239,.075);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="eternal"]{
   --chordle-surface-base:#1e1a17;
@@ -521,6 +574,9 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(235,150,78,.25);
   --chordle-surface-glow:rgba(217,121,50,.18);
   --chordle-surface-inner:rgba(255,177,102,.048);
+  --chordle-spin-a:rgba(255,151,68,.130);
+  --chordle-spin-b:rgba(255,205,143,.075);
+  --chordle-spin-c:rgba(213,101,29,.100);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="absolute"]{
   --chordle-surface-base:#18151d;
@@ -528,18 +584,33 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-border:rgba(177,126,235,.27);
   --chordle-surface-glow:rgba(145,83,215,.21);
   --chordle-surface-inner:rgba(190,139,245,.052);
+  --chordle-spin-a:rgba(177,113,242,.135);
+  --chordle-spin-b:rgba(218,179,255,.080);
+  --chordle-spin-c:rgba(118,58,181,.105);
 }
 .chordle-rarity-surface[data-chordle-surface-rarity="supreme"]{
+  --chordle-surface-base:#1a1b1f;
+  --chordle-surface-tint:rgba(146,146,176,.030);
+  --chordle-surface-border:rgba(187,169,255,.24);
+  --chordle-surface-glow:rgba(170,121,255,.12);
+  --chordle-surface-inner:rgba(255,114,198,.035);
+  --chordle-spin-a:rgba(255,100,100,.105);
+  --chordle-spin-b:rgba(94,167,255,.105);
+  --chordle-spin-c:rgba(255,114,198,.105);
   background:
-    linear-gradient(135deg,
-      rgba(255,100,100,.055),
-      rgba(255,216,77,.045) 22%,
-      rgba(98,213,139,.045) 43%,
-      rgba(94,167,255,.052) 64%,
-      rgba(170,121,255,.055) 82%,
-      rgba(255,114,198,.050)),
-    #1a1b1f!important;
-  border-color:rgba(187,169,255,.24)!important;
+    conic-gradient(
+      from var(--chordle-surface-angle) at 50% 50%,
+      rgba(255,100,100,.090),
+      rgba(255,216,77,.070) 16%,
+      rgba(98,213,139,.072) 32%,
+      rgba(94,167,255,.085) 50%,
+      rgba(170,121,255,.090) 68%,
+      rgba(255,114,198,.085) 84%,
+      rgba(255,100,100,.090)
+    ),
+    linear-gradient(var(--chordle-surface-tint),var(--chordle-surface-tint)),
+    var(--chordle-surface-base)!important;
+  border-color:var(--chordle-surface-border)!important;
   box-shadow:
     0 0 14px rgba(94,167,255,.11),
     0 0 22px rgba(170,121,255,.09),
@@ -1816,6 +1887,7 @@ function firstDiscoveryMeta(saved){
 }
 
 async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
+  const seq=++state.firstDiscoveriesRenderSeq;
   const panel=mountFirstDiscoveriesPanel();
   if(!panel)return;
   const list=panel.querySelector('.profile-first-discoveries-list');
@@ -1842,6 +1914,8 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
       .in('badge_key',chunk)
       .order('discovered_at',{ascending:true})
   ));
+
+  if(seq!==state.firstDiscoveriesRenderSeq)return;
 
   const owners=[];
   for(const result of results){
@@ -1884,12 +1958,25 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
       ||am.title.localeCompare(bm.title);
   });
 
+  if(seq!==state.firstDiscoveriesRenderSeq)return;
+
   if(!discovered.length){
     list.innerHTML='<div class="profile-first-discoveries-empty">No first discoveries yet.</div>';
     return;
   }
 
-  discovered.forEach((saved,index)=>{
+  // A final rendered-key guard protects against duplicate aliases and any
+  // future catalog rows that resolve to the same visible badge identity.
+  const renderedIdentities=new Set();
+  const visibleDiscoveries=discovered.filter(saved=>{
+    const meta=firstDiscoveryMeta(saved);
+    const identity=(meta.catalog?.key||meta.key)+'|'+meta.title.trim().toLocaleLowerCase();
+    if(renderedIdentities.has(identity))return false;
+    renderedIdentities.add(identity);
+    return true;
+  });
+
+  visibleDiscoveries.forEach((saved,index)=>{
     const meta=firstDiscoveryMeta(saved);
     const key=meta.key;
     const catalog=meta.catalog;
@@ -1905,7 +1992,7 @@ async function renderFirstDiscoveries(targetProfile,badgeRows=[]){
     button.addEventListener('click',()=>nativeApp()?.openBadgeDetailByKey?.(key));
     item.appendChild(button);
 
-    if(index<discovered.length-1){
+    if(index<visibleDiscoveries.length-1){
       const separator=document.createElement('span');
       separator.className='profile-first-discovery-separator';
       separator.textContent='⋅';
