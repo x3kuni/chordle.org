@@ -17,6 +17,7 @@ const PENDING_ANON_ROLL_KEY = "chordle_pending_anonymous_roll_v1";
 const ANON_ROLL_BROWSER_KEY = "chordle_anonymous_roll_browser_v1";
 const SIGNUP_COOLDOWN_KEY = "chordle_signup_cooldown_v1";
 const SIGNUP_COOLDOWN_MS = 60000;
+const ANON_MAX_SCORE_EXCLUSIVE = 5000000;
 const CHORDLE_DISCORD_URL = "https://discord.gg/vsWx9n2S4";
 
 const state = {
@@ -1525,6 +1526,12 @@ function captureAnonymousRoll({requireComplete=true}={}){
 
   const notes=currentDailyNotes();
   const analysis=canonicalRollAnalysis(notes);
+  if(analysis?.score>=ANON_MAX_SCORE_EXCLUSIVE){
+    // Anonymous rolls at/above the protected threshold are intentionally not
+    // claimable later through the sign-in/sign-up flow.
+    clearAnonymousRollClaim();
+    return null;
+  }
   const next=document.getElementById('nextChord');
   const complete=!!next?.classList.contains('visible');
   if(!notes||!analysis||(requireComplete&&!complete))return null;
@@ -1564,6 +1571,10 @@ async function persistPendingAnonymousRoll(){
   if(notes.length!==6||!notes.every(n=>Number.isInteger(n)&&n>=0&&n<=36))return null;
   const analysis=canonicalRollAnalysis(notes);
   if(!analysis)return null;
+  if(analysis.score>=ANON_MAX_SCORE_EXCLUSIVE){
+    clearAnonymousRollClaim();
+    return null;
+  }
 
   let roll=await getTodayRoll();
   if(roll){
