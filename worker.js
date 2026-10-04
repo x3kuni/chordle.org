@@ -326,11 +326,16 @@ export default {
       html = html.replace(simMarker, bridge);
     }
 
-    const tag = '<script type="module" src="/auth.js?v=discovery-share-fixes-20261003-1"></script>';
+    const tag = '<script type="module" src="/auth.js?v=global-pacific-reset-20261003-1"></script>';
     const body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
 
     const headers = new Headers(response.headers);
     headers.delete("content-length");
+    // HTML must not stay cached across daily-reset fixes. The versioned auth.js
+    // URL handles module caching separately; this keeps the boot code current.
+    headers.set("cache-control","no-store, no-cache, must-revalidate");
+    headers.set("pragma","no-cache");
+    headers.set("expires","0");
     return new Response(body, { status: response.status, statusText: response.statusText, headers });
   }
 };
