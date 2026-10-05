@@ -565,6 +565,109 @@ html.chordle-external-replay #nextChord{display:none!important}
 }
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
+
+  /* Non-winner leaderboard cards keep the desktop two-column composition on
+     phones, but the score column must scale with the viewport. The previous
+     unconditional 330px minimum left almost no room for chord/notes on mobile. */
+  .leaderboard-row-entry{
+    grid-template-columns:minmax(0,1fr)!important;
+    gap:7px!important;
+  }
+  .leaderboard-row-card{
+    grid-template-columns:minmax(0,1fr) clamp(112px,34vw,146px)!important;
+    gap:9px!important;
+    min-width:0!important;
+    min-height:94px!important;
+    padding:12px 9px 11px 12px!important;
+    overflow:hidden!important;
+  }
+  .leaderboard-row-card .mock-roll-chord{
+    min-width:0!important;
+    width:100%!important;
+  }
+  .leaderboard-row-card .mock-roll-chord .chord-name{
+    font-size:clamp(16px,4.9vw,20px)!important;
+    line-height:1.08!important;
+    white-space:normal!important;
+    word-break:normal!important;
+    overflow-wrap:normal!important;
+  }
+  .leaderboard-row-card .mock-roll-notes{
+    width:100%!important;
+    max-width:none!important;
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;
+    gap:3px!important;
+    margin-top:7px!important;
+  }
+  .leaderboard-row-card .mock-roll-notes .note-pill{
+    min-width:0!important;
+    width:100%!important;
+    padding:5px 1px!important;
+    font-size:clamp(8px,2.35vw,10px)!important;
+    line-height:1!important;
+    letter-spacing:-.03em;
+    overflow:hidden;
+    text-overflow:clip;
+  }
+  .leaderboard-row-card .mock-roll-percentile{
+    margin-top:6px!important;
+    font-size:9px!important;
+    line-height:1.1!important;
+    letter-spacing:.035em!important;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .leaderboard-row-card .mock-roll-score-block,
+  .chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block{
+    min-width:0!important;
+    width:100%!important;
+    min-height:76px!important;
+    padding:16px 3px 0 2px!important;
+    overflow:visible!important;
+    justify-content:center!important;
+    align-items:flex-end!important;
+  }
+  .leaderboard-row-card .mock-roll-score-block .score,
+  .chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block .score{
+    width:100%!important;
+    max-width:100%!important;
+    font-size:clamp(28px,8vw,42px);
+    line-height:.92!important;
+    margin:0!important;
+    padding:0!important;
+    transform:none!important;
+    text-align:right!important;
+  }
+  .leaderboard-roll-rarity-corner{
+    top:8px!important;
+    right:9px!important;
+    max-width:clamp(104px,33vw,142px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-size:9px!important;
+    line-height:1!important;
+    letter-spacing:.10em!important;
+  }
+}
+@media(max-width:390px){
+  .leaderboard-row-card{
+    grid-template-columns:minmax(0,1fr) minmax(104px,31vw)!important;
+    gap:7px!important;
+    padding-left:10px!important;
+    padding-right:7px!important;
+  }
+  .leaderboard-row-card .mock-roll-score-block,
+  .chordle-tight-leaderboard-card:not(.leaderboard-winner-card) .mock-roll-score-block{
+    min-height:72px!important;
+    padding-top:15px!important;
+  }
+  .leaderboard-roll-rarity-corner{
+    right:7px!important;
+    max-width:100px;
+    font-size:8.5px!important;
+    letter-spacing:.08em!important;
+  }
 }
 .profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
 .chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
