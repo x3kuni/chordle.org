@@ -615,6 +615,78 @@ html.chordle-external-replay #nextChord{display:none!important}
   color:#ffead8!important;
   -webkit-text-fill-color:#ffead8!important;
 }
+
+/* Eternal regression polish:
+   keep the native Eternal character while fixing the readability regressions
+   introduced by the broader high-contrast pass above. */
+.badge-detail-panel.detail-eternal .badge-detail-title{
+  -webkit-text-stroke:0!important;
+  paint-order:normal!important;
+}
+.badge-detail-panel.detail-eternal .badge-detail-stat-value:not(.badge-detail-rarity-value):not(.badge-detail-score-value){
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.badge-detail-panel.detail-eternal .badge-detail-profile-link.custom-name-color{
+  color:var(--account-name-color)!important;
+  -webkit-text-fill-color:var(--account-name-color)!important;
+}
+.badge-detail-panel.detail-eternal .badge-detail-profile-link.adaptive-name-color{
+  color:#fff6ee!important;
+  -webkit-text-fill-color:#fff6ee!important;
+}
+
+/* Leaderboard Eternal scores use the game's original animated Eternal text
+   gradient instead of the generic white readability override. */
+.leaderboard-row-card .score-box.finalized.rarity-eternal .score,
+.leaderboard-winner-card .score-box.finalized.rarity-eternal .score{
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+  background-image:linear-gradient(
+    var(--gradient-angle),#ffd2aa 0%,#101114 38%,#ffffff 78%,#ffd2aa 100%
+  )!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-stroke:0!important;
+  paint-order:normal!important;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.48)) drop-shadow(0 0 5px rgba(217,121,50,.20))!important;
+  text-shadow:none!important;
+}
+
+/* Keep the compact Top 5 Eternal title bright across every gradient angle.
+   This deliberately avoids the dark text stop used by the full-size card. */
+.roll-detail-badge.badge.eternal .roll-detail-badge-name.badge-name{
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+  background-color:transparent!important;
+  background-image:linear-gradient(
+    var(--gradient-angle),
+    #fffaf5 0%,#ffe7cc 20%,#ffbb72 42%,#fff3e5 64%,#ffffff 82%,#ffd19a 100%
+  )!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-stroke:0!important;
+  paint-order:normal!important;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.72)) drop-shadow(0 0 8px rgba(255,157,66,.34))!important;
+  text-shadow:none!important;
+}
+
+/* Eternal's wide Zen Dots score needs a wider profile column so large
+   nine-digit rolls can grow left instead of being fit down too aggressively. */
+@media(min-width:761px){
+  .profile-best-wrap .mock-roll-card.rarity-eternal .mock-roll-layout{
+    grid-template-columns:minmax(0,1fr) minmax(390px,.62fr)!important;
+    gap:14px!important;
+  }
+  .profile-best-wrap .mock-roll-card.rarity-eternal .mock-roll-score-block{
+    --mock-score-right-gutter:0px!important;
+    padding-right:0!important;
+  }
+  .profile-best-wrap .mock-roll-card.rarity-eternal .mock-roll-score-block .score{
+    font-size:clamp(70px,8.6vw,114px);
+    line-height:.92;
+  }
+}
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
 
