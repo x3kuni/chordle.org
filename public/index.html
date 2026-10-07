@@ -5105,6 +5105,17 @@
       };
     }
 
+    if(group==='community'){
+      const entries=catalog
+        .filter(b=>globalBadgeExistCount(b.key)>0)
+        .sort((a,b)=>b.points-a.points || a.name.localeCompare(b.name));
+      return {
+        title:'Community Discovered', titleRarity:null,
+        total:catalog.length, found:entries.length,
+        entries, groupUnlocked:true
+      };
+    }
+
     const entries=catalog.filter(b=>b.rarity===group)
       .sort((a,b)=>b.points-a.points || a.name.localeCompare(b.name));
     const found=entries.filter(b=>seenBadges.has(b.key)).length;
@@ -5122,7 +5133,7 @@
     btn.type='button';
     btn.className='badge-index-tab';
     btn.dataset.group=group;
-    if(group!=='yours' && group!=='all' && !locked) btn.classList.add(`index-rarity-${group}`);
+    if(group!=='yours' && group!=='all' && group!=='community' && !locked) btn.classList.add(`index-rarity-${group}`);
     if(locked) btn.classList.add('locked');
     const labelEl=document.createElement('span');
     labelEl.className='badge-index-tab-label';
@@ -5140,7 +5151,8 @@
     const catalog=buildBadgeCatalog();
     badgeIndexNav.replaceChildren(
       createBadgeIndexTab('yours','Your Badges',false),
-      createBadgeIndexTab('all','All',false)
+      createBadgeIndexTab('all','All',false),
+      createBadgeIndexTab('community','Community Discovered',false)
     );
     const divider=document.createElement('div');
     divider.className='badge-index-tab-divider';
@@ -5192,7 +5204,7 @@
     }else{
       for(const badge of info.entries){
         const unlocked=seenBadges.has(badge.key);
-        const revealRow=unlocked && info.groupUnlocked;
+        const revealRow=(unlocked && info.groupUnlocked) || badgeIndexSelected==='community';
 
         const entry=document.createElement('div');
         entry.className='badge-index-entry';
