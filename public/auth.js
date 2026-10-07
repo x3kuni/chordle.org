@@ -518,18 +518,8 @@ html.chordle-external-replay #nextChord{display:none!important}
   --chordle-surface-start:.075;--chordle-surface-end:.032;
   --chordle-surface-border:.34;--chordle-surface-ring:.050;--chordle-surface-glow:.12;
 }
-.chordle-rarity-surface[data-chordle-surface-rarity="eternal"]{
-  --chordle-surface-base:#211b17;
-  --chordle-surface-rgb:217,121,50;
-  --chordle-surface-start:.125;--chordle-surface-end:.060;
-  --chordle-surface-border:.52;--chordle-surface-ring:.070;--chordle-surface-glow:.21;
-}
-.chordle-rarity-surface[data-chordle-surface-rarity="absolute"]{
-  --chordle-surface-base:#1c1722;
-  --chordle-surface-rgb:154,101,219;
-  --chordle-surface-start:.135;--chordle-surface-end:.065;
-  --chordle-surface-border:.56;--chordle-surface-ring:.080;--chordle-surface-glow:.25;
-}
+/* Eternal and Absolute deliberately do not get the generic rarity-tint layer.
+   Their native game surfaces already provide full solid animated gradients. */
 
 /* Supreme uses the game's established rotating rainbow BORDER gradient.
    The center stays as the new subtle dark tint. */
@@ -562,6 +552,13 @@ html.chordle-external-replay #nextChord{display:none!important}
 .roll-detail-badge.chordle-rarity-surface,
 .badge-index-row.chordle-rarity-surface{
   transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,filter .18s ease!important;
+}
+
+/* Eternal badge details sit directly on the rarity's own orange/black/white
+   gradient. Remove the pale stat/discovery fills that read like gray labels. */
+.badge-detail-panel.detail-eternal .badge-detail-stat-value:not(.badge-detail-rarity-value):not(.badge-detail-score-value),
+.badge-detail-panel.detail-eternal .badge-detail-discovery-cell{
+  background:transparent!important;
 }
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
@@ -2626,7 +2623,9 @@ function normalizeSurfaceRarity(value){
 function markRaritySurface(el,rarity){
   if(!el)return null;
   const id=normalizeSurfaceRarity(rarity);
-  if(!id)return clearRaritySurface(el);
+  // Eternal/Absolute already own complete gradient surfaces in the game CSS.
+  // Never stack the generic tint layer over those native backgrounds.
+  if(!id || id==='eternal' || id==='absolute')return clearRaritySurface(el);
   el.classList.add('chordle-rarity-surface');
   el.dataset.chordleSurfaceRarity=id;
   nativeApp()?.syncRarityGradient?.();
