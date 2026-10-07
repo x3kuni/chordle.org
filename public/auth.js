@@ -554,11 +554,66 @@ html.chordle-external-replay #nextChord{display:none!important}
   transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,filter .18s ease!important;
 }
 
-/* Eternal badge details sit directly on the rarity's own orange/black/white
-   gradient. Remove the pale stat/discovery fills that read like gray labels. */
+/* Eternal uses a bright/dark/bright animated surface. Keep its special look,
+   but make every important text layer readable at every gradient angle. */
+.badge-detail-panel.detail-eternal .badge-detail-title,
+.badge-detail-panel.detail-eternal .badge-detail-rarity-value,
+.badge-detail-panel.detail-eternal .badge-detail-score-value{
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+  background-image:linear-gradient(
+    var(--gradient-angle),
+    #fff8f1 0%,#ffd7ae 25%,#ffad62 47%,#fff4e7 68%,#ffffff 82%,#ffc987 100%
+  )!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-stroke:.55px rgba(20,12,8,.86);
+  paint-order:stroke fill;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.92)) drop-shadow(0 0 7px rgba(0,0,0,.46))!important;
+}
+.badge-detail-panel.detail-eternal .badge-detail-description,
+.badge-detail-panel.detail-eternal .badge-detail-stat-label,
 .badge-detail-panel.detail-eternal .badge-detail-stat-value:not(.badge-detail-rarity-value):not(.badge-detail-score-value),
+.badge-detail-panel.detail-eternal .badge-detail-discovery-cell,
+.badge-detail-panel.detail-eternal .badge-detail-profile-link{
+  color:#fff6ee!important;
+  -webkit-text-fill-color:#fff6ee!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.96),0 0 6px rgba(0,0,0,.58)!important;
+}
+.badge-detail-panel.detail-eternal .badge-detail-stat-label{
+  color:#ffe5cd!important;
+  -webkit-text-fill-color:#ffe5cd!important;
+}
 .badge-detail-panel.detail-eternal .badge-detail-discovery-cell{
-  background:transparent!important;
+  background:rgba(14,14,16,.34)!important;
+  border-color:rgba(255,235,216,.24)!important;
+}
+
+/* The same high-contrast Eternal typography is used on reveal badges,
+   leaderboard/profile roll cards, roll-detail popups, and the main result. */
+.badge.eternal .badge-name,
+.badge.eternal .badge-desc,
+.badge.eternal .rarity,
+.badge.eternal .points,
+.mock-roll-card.rarity-eternal .chord-name,
+.mock-roll-card.rarity-eternal .score-rarity,
+.mock-roll-card.rarity-eternal .score,
+.result-card.finalized.rarity-eternal .chord-name,
+.result-card.finalized.rarity-eternal .score-rarity,
+.result-card.finalized.rarity-eternal .score{
+  color:#fff5eb!important;
+  -webkit-text-fill-color:#fff5eb!important;
+  background-image:none!important;
+  -webkit-background-clip:border-box!important;
+  background-clip:border-box!important;
+  -webkit-text-stroke:.38px rgba(18,11,7,.86);
+  paint-order:stroke fill;
+  filter:none!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.96),0 0 6px rgba(0,0,0,.56),0 0 10px rgba(217,121,50,.20)!important;
+}
+.badge.eternal .badge-desc{
+  color:#ffead8!important;
+  -webkit-text-fill-color:#ffead8!important;
 }
 @media(max-width:760px){
   .chordle-badge-sort-control{position:relative;top:auto;right:auto;width:max-content;margin:8px 10px 12px auto}
@@ -666,7 +721,8 @@ html.chordle-external-replay #nextChord{display:none!important}
     letter-spacing:.08em!important;
   }
 }
-.profile-best-wrap .mock-roll-score-block .score{font-size:clamp(50px,6vw,78px);line-height:.96}
+.profile-best-wrap .mock-roll-score-block{--mock-score-right-gutter:2px!important;padding-right:2px!important}
+.profile-best-wrap .mock-roll-score-block .score{font-size:clamp(62px,7.8vw,102px);line-height:.94}
 .chordle-footer{width:min(1080px,94vw);margin:52px auto 24px;padding:8px 0 18px;text-align:center;color:#6f747d;font-size:11px;line-height:1.5}
 .chordle-footer a{color:#747983;text-decoration:none;transition:color .15s ease}
 .chordle-footer a:hover{color:#a6abb4}
@@ -926,6 +982,20 @@ async function copyPlainText(text){
   if(!ok)throw new Error('Clipboard copy failed');
 }
 
+function shareBadgeDisplayName(badge){
+  const name=String(badge?.name||'Badge');
+  if(state.session?.user || badge?.special)return name;
+
+  const key=String(badge?.key||badge?.name||'');
+  if(badgeExistCache.counts){
+    return (badgeExistCache.counts.get(key)||0)>0 ? name : '???';
+  }
+
+  // Match the anonymous reveal fallback when discovery data is unavailable:
+  // protect unknown Godly+ names rather than leaking them through Share.
+  return rarityAtLeast(badge?.rarity,'godly') ? '???' : name;
+}
+
 function currentShareText(){
   if(state.externalReplay)return '';
   const next=document.getElementById('nextChord');
@@ -961,7 +1031,7 @@ function currentShareText(){
   lines.push(`**${score.toLocaleString()}** Score`,'');
   badges.forEach(badge=>{
     const prefix=rarityAtLeast(badge.rarity,'legendary')?'## ':'';
-    lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${badge.name}**`);
+    lines.push(`${prefix}**${rarityEmoji(badge.rarity)} ${shareBadgeDisplayName(badge)}**`);
   });
   lines.push('', 'https://chordle.org/');
   return lines.join('\n');
@@ -1152,6 +1222,7 @@ function mountShareButton(){
     btn.addEventListener('click',async event=>{
       event.preventDefault();
       event.stopPropagation();
+      if(!state.session?.user)await fetchGlobalBadgeExistCounts();
       const text=currentShareText();
       if(!text)return;
       try{
@@ -3032,9 +3103,18 @@ const BADGE_EXIST_PAGE_SIZE=1000;
 const BADGE_EXIST_CACHE_MS=15000;
 const badgeExistCache={fetchedAt:0,counts:null,inFlight:null};
 
+function publishGlobalBadgeExistCounts(counts){
+  const published=Object.create(null);
+  for(const [key,value] of (counts||new Map())){
+    published[String(key)]=Math.max(0,Math.floor(Number(value)||0));
+  }
+  window.CHORDLE_GLOBAL_BADGE_EXIST_COUNTS=published;
+}
+
 async function fetchGlobalBadgeExistCounts({force=false}={}){
   const now=Date.now();
   if(!force&&badgeExistCache.counts&&now-badgeExistCache.fetchedAt<BADGE_EXIST_CACHE_MS){
+    publishGlobalBadgeExistCounts(badgeExistCache.counts);
     return {counts:badgeExistCache.counts,error:null};
   }
   if(badgeExistCache.inFlight)return badgeExistCache.inFlight;
@@ -3057,6 +3137,7 @@ async function fetchGlobalBadgeExistCounts({force=false}={}){
     }
     badgeExistCache.counts=counts;
     badgeExistCache.fetchedAt=Date.now();
+    publishGlobalBadgeExistCounts(counts);
     return {counts,error:null};
   })();
 
@@ -3087,6 +3168,21 @@ async function refreshBadgeExistCounts(){
   if(ownedResult.error)console.warn('Chordle owned badge tint:',ownedResult.error.message);
 
   const counts=instanceResult.counts||new Map();
+  publishGlobalBadgeExistCounts(counts);
+
+  // The native badge index builds Community Discovered from this published
+  // count map. If the user opened that tab before the async count fetch
+  // completed, rebuild it exactly once when its expected row count changes.
+  const activeCommunityTab=document.querySelector('#badgeIndexNav .badge-index-tab[data-group="community"].active');
+  if(activeCommunityTab){
+    const expectedCommunityCount=[...counts.values()].filter(value=>(Number(value)||0)>0).length;
+    const renderedCommunityCount=document.querySelectorAll('#badgeIndexList .badge-index-entry').length;
+    if(renderedCommunityCount!==expectedCommunityCount)activeCommunityTab.click();
+  }
+
+  mountBadgeSortControl();
+  sortBadgeIndexEntries(state.badgeSortOrder);
+
   const ownedKeys=new Set((ownedResult.data||[]).map(row=>String(row.badge_key)));
 
   document.querySelectorAll(".badge-index-row[data-badge-key]").forEach(row=>{
