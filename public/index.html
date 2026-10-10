@@ -5324,18 +5324,19 @@
 
   const FINAL_RARITY_CLASSES = ['common','uncommon','rare','epic','legendary','mythic','ultra','godly','supreme','omnipotent','eternal','absolute'];
 
-  // Beta percentile calibration. The central distribution was rechecked against
-  // 40,000 complete rolls using the current scoring engine. The old 400,000-roll
-  // calibration remains in the extreme tails where 40k rolls cannot estimate
-  // rare outcomes reliably.
+  // Score percentile calibration, using independent uniform 0..36 note rolls and
+  // the full live analyze() + wholeChordBadges() scoring code. The lower tail
+  // was rechecked against 70,000 fresh rolls (October 2026). Central and upper
+  // anchors retain the prior larger-sample calibration. Scores rarer than the
+  // smallest observed value require extrapolation and are estimates, not counts.
   const SCORE_PERCENTILE_ANCHORS = [
-    [6997,0.00025],
-    [7840,0.01], [9362,0.05],
-    [11812,0.1], [14229,0.5], [16072,1],
+    [6997,0.00025], // sparse historical lower-tail observation
+    [9000,0.00286], [9500,0.00571], [10000,0.00714],
+    [10500,0.02286], [11000,0.04857],
+    [11600,0.1], [14300,0.5], [16072,1],
     [24792,5], [32601,10], [52304,25], [93965,50], [198560,75],
     [502180,90], [1056415,95], [3680913,99], [7056446,99.5],
-    [21417120,99.9],
-    [37840891,99.95], [87814475,99.98475],
+    [21417120,99.9], [37840891,99.95], [87814475,99.98475],
     [131283400,99.99], [234477620,99.995], [449070656,99.9975],
     [936776919,99.99875], [1101387210,99.999], [2803788133,99.99975]
   ];
@@ -5380,13 +5381,17 @@
     return 100-Math.max(1e-12,top);
   }
 
-  function exactSpecificChordPercent(notes){
-    if(Array.isArray(notes) && notes.length===6 && notes.every(n=>n===notes[0])){
-      // One exact ordered outcome among 37^6 possibilities. Order is irrelevant
-      // here because all six notes are identical, so there is still only one outcome.
-      return 100/Math.pow(37,6);
+  // Six identical notes lie beyond the simulated top tail. For that case,
+  // enumerate all 37 six-of-a-kind scores instead of confusing the probability
+  // of one exact chord with its rank against other six-of-a-kind chords.
+  let sixOfAKindScoreCatalog=null;
+  function exactSixOfKindTopPercent(notes,total){
+    if(!Array.isArray(notes) || notes.length!==6 || !notes.every(n=>n===notes[0]) || !Number.isFinite(total)) return null;
+    if(!sixOfAKindScoreCatalog){
+      sixOfAKindScoreCatalog=Array.from({length:37},(_,note)=>calculateRollTotal(Array(6).fill(note)));
     }
-    return null;
+    const atLeastAsHigh=sixOfAKindScoreCatalog.filter(score=>score>=total).length;
+    return (100*atLeastAsHigh)/Math.pow(37,6);
   }
 
   function formatTinyPercent(value){
@@ -5394,16 +5399,16 @@
     if(value>=.1) return value.toFixed(1).replace(/\.0$/,'');
     if(value>=.01) return value.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
     if(value>=.001) return value.toFixed(3).replace(/0+$/,'').replace(/\.$/,'');
-    if(value>=.0001) return value.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
-    if(value>=.00001) return value.toFixed(5).replace(/0+$/,'').replace(/\.$/,'');
-    if(value>=.000001) return value.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
-    if(value>=.0000001) return value.toFixed(7).replace(/0+$/,'').replace(/\.$/,'');
-    return Math.max(1e-12,value).toFixed(9).replace(/0+$/,'').replace(/\.$/,'');
+    // Very small probabilities need significant digits, not a single
+    // rounded decimal place (e.g. 0.00000144%, not 0.000001%).
+    const safe=Math.max(1e-12,value);
+    const decimals=Math.min(12,Math.max(4,Math.ceil(-Math.log10(safe))+2));
+    return safe.toFixed(decimals).replace(/0+$/,'').replace(/\.$/,'');
   }
 
 
   function scorePercentileSummary(total,badges=[],notes=[]){
-    const exactSpecific=exactSpecificChordPercent(notes);
+    const exactSpecific=exactSixOfKindTopPercent(notes,total);
     if(exactSpecific!==null){
       return {text:`Top ${formatTinyPercent(exactSpecific)}%`,kind:'top'};
     }
@@ -5413,10 +5418,10 @@
       let top=Math.max(1e-12,100-p);
       if(total>SCORE_PERCENTILE_ANCHORS[SCORE_PERCENTILE_ANCHORS.length-1][0]){
         const drivers=(badges||[]).filter(
-          b=>Number.isFinite(b.probability) && b.probability>0 && b.points>=total*.25
+          b=>Number.isFinite(b.probability) && b.probability>0 && b.points>=total
         );
         if(drivers.length){
-          const badgeFloor=Math.min(...drivers.map(b=>b.probability*100));
+          const badgeFloor=Math.max(...drivers.map(b=>b.probability*100));
           top=Math.max(top,badgeFloor);
         }
       }
@@ -5426,34 +5431,11 @@
   }
 
   function showScorePercentile(total,badges=[],notes=[]){
-    const exactSpecific=exactSpecificChordPercent(notes);
+    // Keep the main panel and leaderboard/mock roll percentile logic identical.
+    const summary=scorePercentileSummary(total,badges,notes);
     scorePercentileEl.classList.remove('top','bottom');
-    if(exactSpecific!==null){
-      scorePercentileEl.textContent=`Top ${formatTinyPercent(exactSpecific)}%`;
-      scorePercentileEl.classList.add('top','visible');
-      return;
-    }
-
-    const p=Math.max(1e-9,Math.min(99.999999999,interpolateScorePercentile(total)));
-    if(p>=50){
-      let top=Math.max(1e-12,100-p);
-      // Beyond the sampled ceiling, do not claim a score is rarer than a
-      // score-driving badge that already guarantees roughly this magnitude.
-      if(total>SCORE_PERCENTILE_ANCHORS[SCORE_PERCENTILE_ANCHORS.length-1][0]){
-        const drivers=(badges||[]).filter(b=>Number.isFinite(b.probability) && b.probability>0 && b.points>=total*.25);
-        if(drivers.length){
-          const badgeFloor=Math.min(...drivers.map(b=>b.probability*100));
-          top=Math.max(top,badgeFloor);
-        }
-      }
-      scorePercentileEl.textContent=`Top ${formatTinyPercent(top)}%`;
-      scorePercentileEl.classList.add('top');
-    }else{
-      const bottom=Math.max(1e-12,p);
-      scorePercentileEl.textContent=`Bottom ${formatTinyPercent(bottom)}%`;
-      scorePercentileEl.classList.add('bottom');
-    }
-    scorePercentileEl.classList.add('visible');
+    scorePercentileEl.textContent=summary.text;
+    scorePercentileEl.classList.add(summary.kind,'visible');
   }
 
   function scoreTier(total){
